@@ -102,36 +102,108 @@ def verify(
     return True, ""
 
 
-def premise_correction(user_numbers: list[str], prices: list[dict], treatment: str) -> str | None:
+def _price_bits(record: dict) -> str:
+    bits = []
+    qualifier = str(record.get("qualifier") or "").strip()
+    program = str(record.get("program") or record.get("duration") or "").strip()
+    if qualifier and qualifier.lower() != "listed":
+        bits.append(qualifier)
+    if program and program.lower() not in {"listed", "the listed program"}:
+        bits.append(program)
+    return f" ({', '.join(bits)})" if bits else ""
+
+
+def _shown_amount(record: dict) -> str:
+    low = int(record["price_low"])
+    high = int(record["price_high"])
+    if high != low:
+        return f"{low:,}-{high:,}"
+    return f"{low:,}"
+
+
+def _starting_record(prices: list[dict]) -> dict | None:
+    answerable = [record for record in prices if record.get("answerable", True)]
+    for record in answerable:
+        if record.get("id") == "p_profile_starting":
+            return record
+    for record in answerable:
+        if record.get("category") == "package_starting_from":
+            return record
+    return None
+
+
+def _no_topic(user_numbers: list[str], prices: list[dict]) -> str:
+    claim = user_numbers[0].strip()
+    record = _starting_record(prices)
+    if record is None:
+        return f"I can't confirm that. {claim} does not match any listed ITC package price."
+    source = record.get("url") or ""
+    sentence = (
+        f"I can't confirm that. {claim} does not match any listed ITC package price. "
+        f"The pages list a starting-from price of {_shown_amount(record)} {record.get('currency') or 'USD'}."
+    )
+    if source:
+        sentence += f" Source: {source}"
+    return sentence
+
+
+def _topic_records(prices: list[dict], treatment: str, clinic: str) -> list[dict]:
+    answerable = [record for record in prices if record.get("answerable", True)]
+    treatment_l = treatment.lower().strip()
+    clinic_l = clinic.lower().strip()
+    topic = []
+    if treatment_l:
+        topic = [
+            record
+            for record in answerable
+            if treatment_l in str(record.get("treatment") or "").lower()
+            or str(record.get("treatment") or "").lower() in treatment_l
+        ]
+        if clinic_l:
+            narrowed = [
+                record
+                for record in topic
+                if clinic_l in str(record.get("clinic") or "").lower()
+                or str(record.get("clinic") or "").lower() in clinic_l
+            ]
+            if narrowed:
+                topic = narrowed
+        return topic
+    if clinic_l:
+        return [
+            record
+            for record in answerable
+            if clinic_l in str(record.get("clinic") or "").lower()
+            or str(record.get("clinic") or "").lower() in clinic_l
+        ]
+    return []
+
+
+def premise_correction(
+    user_numbers: list[str],
+    prices: list[dict],
+    treatment: str,
+    clinic: str = "",
+) -> str | None:
     if not user_numbers:
         return None
     claimed = set(extract_numbers(" ".join(user_numbers)))
     if not claimed:
         return None
-    topic = [
-        record
-        for record in prices
-        if record.get("answerable", True)
-        and treatment
-        and treatment.lower() in str(record.get("treatment") or "").lower()
-    ]
-    pool = topic or [record for record in prices if record.get("answerable", True)]
-    listed = {int(record["price_low"]) for record in pool} | {int(record["price_high"]) for record in pool}
+    topic = _topic_records(prices, treatment, clinic)
+    if not treatment.strip() and not clinic.strip():
+        return _no_topic(user_numbers, prices)
+    if not topic:
+        return _no_topic(user_numbers, prices)
+    listed = {int(record["price_low"]) for record in topic} | {int(record["price_high"]) for record in topic}
     if claimed & listed:
         return None
-    if not pool:
-        return None
-    record = pool[0]
-    amount = int(record["price_low"])
-    shown = f"{amount:,}"
-    if int(record["price_high"]) != amount:
-        shown = f"{amount:,}-{int(record['price_high']):,}"
-    qualifier = record.get("qualifier") or "listed"
-    program = record.get("program") or record.get("duration") or "the listed program"
+    rank = {"package_starting_from": 0, "package_program": 1}
+    record = sorted(topic, key=lambda item: rank.get(item.get("category"), 9))[0]
     name = treatment or record.get("treatment") or "this treatment"
     return (
-        f"I can't confirm that. Our page lists {shown} {record.get('currency') or 'USD'} "
-        f"({qualifier}, {program}) for {name}."
+        f"I can't confirm that. Our page lists {_shown_amount(record)} {record.get('currency') or 'USD'}"
+        f"{_price_bits(record)} for {name}."
     )
 
 

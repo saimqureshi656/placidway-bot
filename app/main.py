@@ -102,13 +102,28 @@ def _clinic_names() -> list[str]:
     return [name for name in names if name]
 
 
-def _treatment(query: str, entities: dict) -> str:
+def _blob(query: str, history: list[Turn]) -> str:
+    parts = [query]
+    parts.extend(turn.content for turn in history)
+    return " ".join(parts).lower()
+
+
+def _treatment(query: str, entities: dict, history: list[Turn]) -> str:
     if entities.get("treatment"):
         return entities["treatment"]
-    lowered = query.lower()
+    lowered = _blob(query, history)
     for needle, name in _TREATMENTS:
         if needle in lowered:
             return name
+    return ""
+
+
+def _clinic(query: str, entities: dict, history: list[Turn]) -> str:
+    if entities.get("clinic"):
+        return str(entities["clinic"])
+    lowered = _blob(query, history)
+    if "itc" in lowered or "immunity therapy" in lowered:
+        return "ITC Immunity Therapy Center"
     return ""
 
 
@@ -199,7 +214,8 @@ def chat(body: ChatRequest, request: Request) -> dict:
                     result.prices,
                     language=language,
                     user_numbers=routed.user_numbers,
-                    treatment=_treatment(rewritten, entities),
+                    treatment=_treatment(rewritten, entities, body.history),
+                    clinic=_clinic(rewritten, entities, body.history),
                     clinic_names=_clinic_names(),
                 )
                 timings.update(stage_timings)

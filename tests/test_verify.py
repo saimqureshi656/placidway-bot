@@ -89,5 +89,29 @@ def test_premise_rejects_fifty_dollars():
     )
     assert correction is not None
     assert correction.startswith("I can't confirm that.")
+    assert "18,995" in correction
+    assert "listed program" not in correction
     assert premise_ok("Yes, it costs $50.", correction) is False
     assert premise_ok(correction + " The page lists the out-patient program.", correction) is True
+
+
+def test_premise_without_topic_uses_starting_price():
+    starting = {
+        "id": "p_profile_starting",
+        "category": "package_starting_from",
+        "price_low": 18995,
+        "price_high": 18995,
+        "currency": "USD",
+        "qualifier": "starting from",
+        "program": "",
+        "treatment": "Alternative Cancer Treatment",
+        "clinic": "ITC Immunity Therapy Center",
+        "url": "https://www.placidway.com/profile/5/Alternative-Cancer-Treatment-by-ITC-Immunity-Therapy-Center",
+        "answerable": True,
+    }
+    correction = premise_correction(["$50"], [PRICE, starting], "", "")
+    assert correction is not None
+    assert "does not match any listed ITC package price" in correction
+    assert "18,995" in correction
+    assert "profile/5" in correction
+    assert "the listed program" not in correction

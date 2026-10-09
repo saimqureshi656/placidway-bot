@@ -157,3 +157,13 @@ The verifier accepts integers 1 through 12 when that integer appears in any retr
 Files changed: `app/main.py`.
 
 Source chips are built only from chunk ids in the model's claims. Retrieved chunks that the answer does not cite are left off the list. A reply with no citations has no sources.
+
+## Fix E: topic-scoped premise check
+
+Files changed: `app/verify.py`, `app/generate.py`, `app/main.py`, `tests/test_verify.py`.
+
+A stated price is compared only with answerable price records for the current treatment and clinic. Those come from the rewrite entities, and if the rewrite left them blank, from the current question plus history.
+
+When that topic has no price records, the reply says the amount does not match any listed ITC package price and gives the clinic starting-from price (`p_profile_starting`, otherwise the first package starting-from row) with its page URL.
+
+Empty qualifier and program fields are omitted. The reply no longer fills them with "listed" or "the listed program".

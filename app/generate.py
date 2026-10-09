@@ -100,6 +100,7 @@ def generate_checked(
     language: str = "en",
     user_numbers: list[str] | None = None,
     treatment: str = "",
+    clinic: str = "",
     clinic_names: list[str] | None = None,
 ) -> tuple[dict, str, list[dict], dict]:
     """Generate, verify, retry once. Returns the draft, status, attempt log, and timings."""
@@ -120,12 +121,12 @@ def generate_checked(
             last_reason = reason
             extra = f"Fix this violation: {reason}. Use only numbers and clinics from the passages and price records."
             continue
-        correction = premise_correction(user_numbers or [], prices, treatment)
+        correction = premise_correction(user_numbers or [], prices, treatment, clinic)
         if correction and not premise_ok(draft.get("answer") or "", correction):
             draft["answer"] = f"{correction} {draft.get('answer') or ''}".strip()
         return draft, "pass", attempts, {"generate_ms": generate_ms, "verify_ms": verify_ms}
     failed = fallback_draft()
-    correction = premise_correction(user_numbers or [], prices, treatment)
+    correction = premise_correction(user_numbers or [], prices, treatment, clinic)
     if correction:
         failed["answer"] = correction
         failed["answer_status"] = "partial"
