@@ -189,18 +189,25 @@ class Retriever:
     def lookup_prices(self, query: str, entities: dict | None = None) -> list[dict]:
         entities = entities or {}
         query_l = f"{query} {entities.get('treatment', '')} {entities.get('country', '')}".lower()
+        treatments = [term for term in TREATMENT_TERMS if term in query_l]
+        entity_treatment = str(entities.get("treatment") or "").lower()
+        if entity_treatment:
+            treatments.append(entity_treatment)
         matched = []
         for record in self.price_records:
             if not record.get("answerable", True):
                 continue
             blob = " ".join(
                 str(record.get(key) or "")
-                for key in ("treatment", "program", "clinic", "location", "raw_text")
+                for key in ("treatment", "program", "clinic", "location", "category", "raw_text")
             ).lower()
-            terms = [term for term in TREATMENT_TERMS + COUNTRY_TERMS if term in query_l]
-            if terms and any(term in blob for term in terms):
-                matched.append(record)
-            elif not terms and record["category"] == "comparison_summary" and "average" in query_l:
+            if treatments:
+                if any(term in blob for term in treatments):
+                    matched.append(record)
+                continue
+            if record["category"] == "comparison_summary" and any(
+                word in query_l for word in ("average", "range", "how much", "cost")
+            ):
                 matched.append(record)
         return matched
 

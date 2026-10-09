@@ -61,3 +61,17 @@ Tests: `pytest tests/test_normalize.py tests/test_verify.py tests/test_extract.p
 
 Open questions:
 - Small structural numbers such as "3 weeks" fail the verifier if that digit is not also in the cited chunk.
+
+## Phase 6: FastAPI and SQLite
+
+Files changed: `app/main.py`, `app/db.py`, `app/security.py`, `app/retrieve.py`, `requirements.txt`.
+
+Decisions:
+- Chat validates a 1000-character message, rate-limits at 20 requests per minute per IP, and writes a log row without API keys.
+- Price lookup requires a treatment term when the question names one. Matching only on "Mexico" was attaching dozens of unrelated price records and the model then set grounded=false.
+- `/health` reports the current index pointer. Admin routes require `X-Admin-Token`.
+
+Tests and gate: server started. `/health` returned status ok, index `v20261009171334`, 131 chunks. `/api/chat` for the adenocarcinoma cost question returned a grounded answer with the 7903 source and verifier status `pass`.
+
+Open questions:
+- The first chat request spends most of its time loading the embedding and reranker models.
