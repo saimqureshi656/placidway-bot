@@ -75,3 +75,15 @@ Tests and gate: server started. `/health` returned status ok, index `v2026100917
 
 Open questions:
 - The first chat request spends most of its time loading the embedding and reranker models.
+
+## Phase 7: chat UI
+
+Files changed: `web/index.html`.
+
+Decisions:
+- One HTML file, no build step. The page posts the last 6 turns to `/api/chat`, renders source chips that open the URL and show the snippet, and shows the disclaimer and lead form when the API asks for them.
+- Example chips cover cost, package contents, the ozone comparison, and a Spanish price question.
+
+Check: `GET /` returned 200 and the HTML includes the header "PlacidWay Assistant", the subtitle "Answers from PlacidWay pages only", the chat endpoint, disclaimer handling, and source chips. No in-app browser tool was available, so the buttons were not clicked in a real browser. The page is served by the same FastAPI app that already returned sources for the cost question.
+
+Open questions: none for this phase.

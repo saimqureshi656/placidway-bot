@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlacidWay Assistant</title>
+  <style>
+    :root { color-scheme: light; --ink: #1c2430; --muted: #5c6b7a; --line: #d7e0e8; --bg: #f4f7f8; --card: #fff; --accent: #0f6e6e; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 16px/1.45 "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); }
+    header, footer { padding: 16px 20px; background: var(--card); border-bottom: 1px solid var(--line); }
+    header h1 { margin: 0; font-size: 1.25rem; }
+    header p { margin: 4px 0 0; color: var(--muted); }
+    main { max-width: 760px; margin: 0 auto; padding: 16px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    button, input, textarea { font: inherit; }
+    .chip, .source, .thumb { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 8px 12px; cursor: pointer; }
+    .log { display: flex; flex-direction: column; gap: 12px; min-height: 40vh; }
+    .msg { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+    .msg.user { background: #e7f4f4; }
+    .sources { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .snippet { display: none; margin-top: 8px; color: var(--muted); font-size: 0.92rem; }
+    .snippet.open { display: block; }
+    .disclaimer { background: #fff6e8; border: 1px solid #efd3a4; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+    form.composer, form.lead { display: grid; gap: 8px; margin-top: 12px; }
+    form.composer { grid-template-columns: 1fr auto; }
+    textarea, input { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
+    .send, .primary { background: var(--accent); color: white; border: 0; border-radius: 8px; padding: 10px 14px; cursor: pointer; }
+    .error { color: #9b2c2c; }
+    footer { border-top: 1px solid var(--line); border-bottom: 0; color: var(--muted); }
+    @media (max-width: 640px) { form.composer { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>PlacidWay Assistant</h1>
+    <p>Answers from PlacidWay pages only</p>
+  </header>
+  <main>
+    <div class="chips" id="chips"></div>
+    <div class="log" id="log"></div>
+    <p class="error" id="error" hidden></p>
+    <form class="composer" id="composer">
+      <textarea id="message" rows="2" maxlength="1000" placeholder="Ask about a package, price, or comparison" required></textarea>
+      <button class="send" type="submit">Send</button>
+    </form>
+  </main>
+  <footer id="footer">Content last refreshed: …</footer>
+  <script>
+    const sessionId = crypto.randomUUID();
+    const history = [];
+    const chips = [
+      "How much does adenocarcinoma cancer treatment cost in Mexico?",
+      "What is included in the adenocarcinoma treatment package?",
+      "Is ozone therapy cheaper in Turkey or Mexico?",
+      "¿Cuánto cuesta el tratamiento del cáncer anal en Tijuana?"
+    ];
+    const chipBox = document.getElementById("chips");
+    chips.forEach((text) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "chip";
+      button.textContent = text;
+      button.addEventListener("click", () => ask(text));
+      chipBox.appendChild(button);
+    });
+
+    async function refreshFooter() {
+      try {
+        const health = await fetch("/health").then((response) => response.json());
+        const when = health.last_refresh ? new Date(health.last_refresh).toLocaleString() : "unknown";
+        document.getElementById("footer").textContent = "Content last refreshed: " + when;
+      } catch (_error) {
+        document.getElementById("footer").textContent = "Content last refreshed: unavailable";
+      }
+    }
+    refreshFooter();
+
+    function addMessage(role, text, extra) {
+      const node = document.createElement("article");
+      node.className = "msg " + role;
+      const body = document.createElement("div");
+      body.textContent = text;
+      node.appendChild(body);
+      if (extra) node.appendChild(extra);
+      document.getElementById("log").appendChild(node);
+      node.scrollIntoView({ block: "end" });
+      return node;
+    }
+
+    function sourceList(sources) {
+      const wrap = document.createElement("div");
+      wrap.className = "sources";
+      (sources || []).forEach((source) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "source";
+        button.textContent = source.section || source.title || "Source";
+        const snippet = document.createElement("div");
+        snippet.className = "snippet";
+        snippet.textContent = source.snippet || "";
+        button.addEventListener("click", () => {
+          snippet.classList.toggle("open");
+          if (source.url) window.open(source.url, "_blank", "noopener");
+        });
+        wrap.appendChild(button);
+        wrap.appendChild(snippet);
+      });
+      return wrap;
+    }
+
+    function leadForm() {
+      const form = document.createElement("form");
+      form.className = "lead";
+      form.innerHTML = "<p>Want the team to follow up?</p><button type='button' class='primary' id='accept'>Yes, contact me</button>";
+      form.querySelector("#accept").addEventListener("click", () => {
+        form.innerHTML = "<input name='name' placeholder='Name' required><input name='email' type='email' placeholder='Email' required><input name='interest' placeholder='Interest' required><button class='primary' type='submit'>Submit</button>";
+      });
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const data = Object.fromEntries(new FormData(form).entries());
+        const response = await fetch("/api/lead", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionId, ...data })
+        });
+        form.textContent = response.ok ? "Thank you. The PlacidWay team will follow up." : "Please check the email and try again.";
+      });
+      return form;
+    }
+
+    async function ask(text) {
+      const error = document.getElementById("error");
+      error.hidden = true;
+      addMessage("user", text);
+      const pending = addMessage("assistant", "Looking through the PlacidWay pages…");
+      try {
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionId, message: text, history: history.slice(-6) })
+        });
+        if (!response.ok) throw new Error("request failed");
+        const data = await response.json();
+        pending.replaceChildren();
+        if (data.show_disclaimer) {
+          const banner = document.createElement("div");
+          banner.className = "disclaimer";
+          banner.textContent = "This is general information from PlacidWay's pages, not medical advice. Please consult your doctor before making treatment decisions.";
+          pending.appendChild(banner);
+        }
+        const body = document.createElement("div");
+        body.textContent = data.answer;
+        pending.appendChild(body);
+        pending.appendChild(sourceList(data.sources));
+        if (data.offer_lead_form) pending.appendChild(leadForm());
+        const row = document.createElement("div");
+        ["up", "down"].forEach((rating) => {
+          const thumb = document.createElement("button");
+          thumb.type = "button";
+          thumb.className = "thumb";
+          thumb.textContent = rating === "up" ? "Yes" : "No";
+          thumb.addEventListener("click", () => {
+            fetch("/api/feedback", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ log_id: data.log_id, rating })
+            });
+          });
+          row.appendChild(thumb);
+        });
+        pending.appendChild(row);
+        history.push({ role: "user", content: text }, { role: "assistant", content: data.answer });
+      } catch (_err) {
+        pending.remove();
+        error.hidden = false;
+        error.textContent = "I couldn't reach the assistant. Please try again.";
+      }
+    }
+
+    document.getElementById("composer").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const box = document.getElementById("message");
+      const text = box.value.trim();
+      if (!text) return;
+      box.value = "";
+      ask(text);
+    });
+  </script>
+</body>
+</html>
