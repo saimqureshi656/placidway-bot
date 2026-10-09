@@ -114,3 +114,20 @@ What is in place:
 - The chat page is `web/index.html`, served at `/`.
 
 What is not done: a passing required-question eval, phase 9 niceties, deployment, and the README/WRITEUP.
+
+## Fix A: diagnostics
+
+Files changed: `app/main.py`, `app/generate.py`, `app/retrieve.py`, `app/llm.py`, `app/diagnostics.py`, `evals/run_evals.py`, `.gitignore`.
+
+Each chat now logs router, rewrite, retrieve, and rerank time. Generate and verify are timed separately. On a fallback, `data/diagnostics.jsonl` stores the raw LLM JSON (or the provider error) and the verifier reason. The API returns those timings under `debug`. The trace file is gitignored.
+
+Diagnostic eval, before any answer-behavior change: **9/32**, p50 20983 ms, p95 32605 ms. Required: q1, q2b, q3, q5, q6, q7 passed; q2, q4, q8 failed. q2b and q3 passed on this run after failing in phase 8.
+
+Classification of every failure:
+
+- q2-ozone: **both**. `$1,000` fails the checker because it looks for the digits `1000` (EVAL-CHECKER). The answer never names Fizikon (BOT).
+- q4-recovery: **BOT**. The reply says recovery time is not listed and stops. It does not add the 3-week program or the 3-month follow-up, even though the 7903 three-week section was retrieved. Verifier status was pass.
+- q8-premise: **both**. The case has no q1 history, so there is no adenocarcinoma topic (EVAL-CHECKER setup). With no topic the premise quoted `15,017 USD (listed, the listed program)` and the model then treated the $50 consultation component as a confirmation (BOT).
+- adrenal-cost, anal-cost, inpatient-difference, optional-lak, exclusion-ambulance, clinic-address, price-list, average-cost, spanish-anal, arabic-anal, turkey-followup, efficacy, lead, specialist-approx, followup-months, stem-mexico, intratumoral, blood-exclusion, profile-start, english-staff: **BOT**. A follow-up probe of the adrenal question returned Groq HTTP 429. `generate` turns that into an empty fallback, and the verifier then reports `grounded is false`. These are rate-limit failures, not evidence that the pages lack the fact. Intent mismatches on the Spanish, Arabic, stem-cell, and efficacy questions happened on the same 429 path, because a failed classifier falls back to `info`.
+
+q7 passed the checker and is not in the failure list. Its answer repeats the medical template and cites chunks the model did not use. That is a BOT issue for groups D and H.

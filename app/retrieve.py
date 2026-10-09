@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import pickle
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -65,6 +66,7 @@ class RetrievalResult:
     prices: list[dict] = field(default_factory=list)
     best_score: float = 0.0
     below_threshold: bool = False
+    timings: dict = field(default_factory=dict)
 
 
 class Retriever:
@@ -91,12 +93,16 @@ class Retriever:
 
     def search(self, query: str, *, intent: str = "info", entities: dict | None = None) -> RetrievalResult:
         entities = entities or {}
+        started = time.perf_counter()
         bm25_ids = self._bm25_top(query)
         dense_ids = self._dense_top(query)
         fused = self._rrf(bm25_ids, dense_ids)
         fused = self._metadata_boost(query, fused, entities)
         ranked = sorted(fused, key=fused.get, reverse=True)[:CANDIDATES]
+        retrieve_ms = int((time.perf_counter() - started) * 1000)
+        rerank_started = time.perf_counter()
         reranked = self._rerank(query, ranked)
+        rerank_ms = int((time.perf_counter() - rerank_started) * 1000)
         hits = reranked[: self.top_k]
         best = hits[0].score if hits else 0.0
         prices = []
@@ -107,6 +113,7 @@ class Retriever:
             prices=prices,
             best_score=best,
             below_threshold=best < self.threshold,
+            timings={"retrieve_ms": retrieve_ms, "rerank_ms": rerank_ms},
         )
 
     def _bm25_top(self, query: str) -> list[int]:

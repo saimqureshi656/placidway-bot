@@ -6,3 +6,6 @@ data/raw/
 data/kb/
 data/index/
 data/*.db
+data/chat_trace.jsonl
+data/diagnostics.jsonl
+data/eval_debug.jsonl

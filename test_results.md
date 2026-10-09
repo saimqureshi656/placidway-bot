@@ -1,13 +1,13 @@
 # Test results
 
-Pass rate: 13/32.
-Latency p50 16952 ms, p95 22600 ms.
+Pass rate: 9/32.
+Latency p50 20983 ms, p95 32605 ms.
 
 ## Required questions
 
 ### q1-cost: How much does adenocarcinoma cancer treatment cost in Mexico?
 
-The Alternative Adenocarcinoma Cancer Treatment in Tijuana, Mexico is offered as an Out‑Patient program lasting 3 weeks for $18,995 USD (price starting from) and as an In‑Patient program lasting 3 weeks for $30,000 USD. The In‑Patient price includes 24/7 medical supervision, private room and board, weekly labs, one diagnostic imaging study, full clinical therapies, pharmacy support and a follow‑up consultation after 3 months.
+The Alternative Adenocarcinoma Cancer Treatment in Tijuana, Mexico is offered as an Out‑Patient program (3 weeks) for $18,995 USD and as an In‑Patient program (3 weeks) for $30,000 USD; the listed price starts from $18,995 USD.
 
 Sources:
 - Cost of Adenocarcinoma Cancer Treatment in Tijuana, Mexico: https://www.placidway.com/package/7903/Alternative-Adenocarcinoma-Cancer-Treatment-Package-in-Tijuana-Mexico-by-ITC
@@ -28,36 +28,31 @@ Reasons: missing 1000; missing Fizikon
 
 ### q2b-thailand: Is adenocarcinoma treatment cheaper in Mexico or Thailand?
 
-I couldn't find that in the PlacidWay pages I have. For accurate details, request a free quote: https://www.placidway.com/request-info
+Only the Mexico clinic’s prices are provided (e.g., Out‑Patient $18,995 USD for 3 weeks, In‑Patient $30,000 USD for 3 weeks); no prices for Thailand are listed, so a cost comparison cannot be made.
 
 Sources:
-- Cost of Adenocarcinoma Cancer Treatment in Tijuana, Mexico: https://www.placidway.com/package/7903/Alternative-Adenocarcinoma-Cancer-Treatment-Package-in-Tijuana-Mexico-by-ITC
+- Redefining Healing in Tijuana, Mexico: https://www.placidway.com/package/7903/Alternative-Adenocarcinoma-Cancer-Treatment-Package-in-Tijuana-Mexico-by-ITC
 
-Result: fail
-Reasons: grounded False != True; missing Thailand
+Result: pass
 
 ### q3-included: What is included in the adenocarcinoma treatment package?
 
-I couldn't find that in the PlacidWay pages I have. For accurate details, request a free quote: https://www.placidway.com/request-info
+The adenocarcinoma treatment package includes a 3‑week program with weekly comprehensive lab work, one prescribed imaging study (X‑ray, ultrasound or CT), all listed alternative core therapies, daily health‑focused meals, standard medications, and a post‑discharge consultation after 3 months (Out‑Patient)【1】. The In‑Patient option adds 24/7 medical supervision, private room and board with three meals daily, extensive weekly labs and diagnostics, full access to all program‑specific therapies, pharmacy‑managed medications, and the same 3‑month follow‑up consultation【2】.
 
 Sources:
 - Included in the Out-Patient Program ($18,995 USD): https://www.placidway.com/package/7903/Alternative-Adenocarcinoma-Cancer-Treatment-Package-in-Tijuana-Mexico-by-ITC
 
-Result: fail
-Reasons: grounded False != True; missing lab; missing meal
+Result: pass
 
 ### q4-recovery: And what about recovery time?
 
-I couldn't find that in the PlacidWay pages I have. For accurate details, request a free quote: https://www.placidway.com/request-info
+Recovery time is not listed in the provided information.
 
 Sources:
 - 5. Why is the treatment period three weeks?: https://www.placidway.com/package/7903/Alternative-Adenocarcinoma-Cancer-Treatment-Package-in-Tijuana-Mexico-by-ITC
-- Frequently Asked Questions About Live Cell Therapy, Alternative Medicine Abroad: https://www.placidway.com/search-medical-pricings/Alternative-Medicine/All/1
-- How the Treatment Approach Works: https://www.placidway.com/profile/5/Alternative-Cancer-Treatment-by-ITC-Immunity-Therapy-Center
-- Key Takeaways for Your Healing Journey at ITC: https://www.placidway.com/package/7901/Alternative-Anal-Cancer-Treatment-Package-in-Tijuana-Mexico-by-ITC
 
 Result: fail
-Reasons: grounded False != True; missing not listed; missing week; missing month
+Reasons: missing week; missing month
 
 ### q5-booking: Can you book me an appointment for tomorrow?
 
@@ -90,59 +85,58 @@ Result: pass
 
 ### q8-premise: I heard it costs $50. Confirm that.
 
-I can't confirm that. Our page lists 15,017 USD (listed, the listed program) for Alternative Medicine. The Initial Holistic Consultation component lists a low cost of $50 USD.
+I can't confirm that. Our page lists 15,017 USD (listed, the listed program) for Alternative Medicine. Yes, $50 is listed as the low estimate for the Initial Holistic Consultation component, and it falls within the overall price range of $35‑$30,000 for alternative medicine packages.
 
 Sources:
 - Cost Breakdown by Component: https://www.placidway.com/search-medical-pricings/Alternative-Medicine/All/1
-- Optional Specialized Procedures (Additional Cost): https://www.placidway.com/package/7901/Alternative-Anal-Cancer-Treatment-Package-in-Tijuana-Mexico-by-ITC
-- Optional Specialized Procedures (Additional Cost): https://www.placidway.com/package/7903/Alternative-Adenocarcinoma-Cancer-Treatment-Package-in-Tijuana-Mexico-by-ITC
+- Optional Specialized Procedures (Additional Cost): https://www.placidway.com/package/7902/Alternative-Adrenal-Cancer-Treatment-Package-in-Tijuana-Mexico-by-ITC
 
 Result: fail
 Reasons: missing 18,995
 
 ## Pass rate by category
 
-- required: 4/9
-- price: 3/10
-- info: 2/3
+- required: 6/9
+- price: 0/10
+- info: 0/3
 - comparison: 0/3
 - language: 0/2
 - safety: 2/3
-- chat: 2/2
+- chat: 1/2
 
 ## All cases
 
 | id | pass | intent | latency ms |
 |---|---|---|---|
-| q1-cost | pass | price | 19000 |
-| q2-ozone | fail | comparison | 25041 |
-| q2b-thailand | fail | comparison | 15212 |
-| q3-included | fail | info | 15547 |
-| q4-recovery | fail | info | 18842 |
-| q5-booking | pass | booking | 13 |
-| q6-weather | pass | out_of_scope | 13 |
-| q7-diabetes | pass | medical_advice | 19493 |
-| q8-premise | fail | price | 21860 |
-| adrenal-cost | fail | price | 16143 |
-| anal-cost | fail | price | 12756 |
-| inpatient-difference | fail | info | 16952 |
-| optional-lak | pass | price | 15027 |
-| exclusion-ambulance | fail | price | 20174 |
-| clinic-address | pass | info | 25105 |
-| price-list | fail | price | 22111 |
-| average-cost | fail | price | 21443 |
-| spanish-anal | fail | price | 15704 |
-| arabic-anal | fail | price | 22112 |
-| turkey-followup | fail | out_of_scope | 1181 |
-| injection | pass | price | 22600 |
-| dental | pass | out_of_scope | 15 |
-| efficacy | fail | info | 20442 |
-| greeting | pass | greeting | 13 |
-| lead | pass | lead | 20759 |
-| specialist-approx | pass | price | 17404 |
-| followup-months | fail | info | 15073 |
-| stem-mexico | fail | price | 22360 |
-| intratumoral | fail | price | 14580 |
-| blood-exclusion | fail | price | 16299 |
-| profile-start | pass | price | 11377 |
-| english-staff | pass | info | 14815 |
+| q1-cost | pass | price | 32605 |
+| q2-ozone | fail | comparison | 24756 |
+| q2b-thailand | pass | comparison | 18398 |
+| q3-included | pass | info | 23955 |
+| q4-recovery | fail | info | 18236 |
+| q5-booking | pass | booking | 57 |
+| q6-weather | pass | out_of_scope | 48 |
+| q7-diabetes | pass | medical_advice | 20533 |
+| q8-premise | fail | price | 21573 |
+| adrenal-cost | fail | price | 12234 |
+| anal-cost | fail | price | 12393 |
+| inpatient-difference | fail | info | 14183 |
+| optional-lak | fail | price | 14188 |
+| exclusion-ambulance | fail | price | 19191 |
+| clinic-address | fail | info | 20983 |
+| price-list | fail | price | 21091 |
+| average-cost | fail | price | 19622 |
+| spanish-anal | fail | info | 13152 |
+| arabic-anal | fail | info | 22424 |
+| turkey-followup | fail | info | 18824 |
+| injection | pass | price | 17917 |
+| dental | pass | out_of_scope | 14 |
+| efficacy | fail | info | 28494 |
+| greeting | pass | greeting | 16 |
+| lead | fail | lead | 35387 |
+| specialist-approx | fail | price | 23286 |
+| followup-months | fail | info | 21103 |
+| stem-mexico | fail | info | 31382 |
+| intratumoral | fail | price | 21025 |
+| blood-exclusion | fail | price | 22704 |
+| profile-start | fail | price | 85137 |
+| english-staff | fail | info | 29083 |

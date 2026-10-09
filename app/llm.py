@@ -60,7 +60,7 @@ def complete(messages: list[dict], *, json_mode: bool = False) -> str:
                 json_mode=json_mode,
             )
         except Exception as exc:
-            errors.append(type(exc).__name__)
+            errors.append(f"{type(exc).__name__}: {exc}"[:300])
     if settings.cerebras_api_key and settings.cerebras_model:
         try:
             return _try_provider(
@@ -71,8 +71,8 @@ def complete(messages: list[dict], *, json_mode: bool = False) -> str:
                 json_mode=json_mode,
             )
         except Exception as exc:
-            errors.append(type(exc).__name__)
-    raise LLMError("language model providers failed")
+            errors.append(f"{type(exc).__name__}: {exc}"[:300])
+    raise LLMError("; ".join(errors) or "language model providers failed")
 
 
 def complete_json(system: str, user: str) -> dict:

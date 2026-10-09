@@ -91,7 +91,15 @@ def main() -> None:
                     "latency_ms": latency_ms,
                 }
             )
-            print(f"{'PASS' if passed else 'FAIL'} {case['id']} {latency_ms:.0f}ms {reasons}")
+            debug = payload.get("debug") or {}
+            if not passed:
+                print(
+                    f"FAIL {case['id']} {latency_ms:.0f}ms {reasons} "
+                    f"status={debug.get('verifier_status')} reason={debug.get('verifier_reason')} "
+                    f"timings={debug.get('timings')}"
+                )
+            else:
+                print(f"PASS {case['id']} {latency_ms:.0f}ms timings={debug.get('timings')}")
     by_category: dict[str, list[bool]] = {}
     for row in rows:
         by_category.setdefault(row["category"], []).append(row["passed"])

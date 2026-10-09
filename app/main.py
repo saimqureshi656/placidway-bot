@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from datetime import datetime, timezone
@@ -12,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from app import db
 from app.config import ROOT, get_settings
+from app.diagnostics import log_turn
 from app.generate import generate_checked
 from app.retrieve import get_retriever
 from app.rewrite import rewrite
@@ -22,6 +24,7 @@ from ingest.build_index import INDEX_DIR
 from ingest.prices import PRICES_PATH
 
 app = FastAPI(title="PlacidWay Assistant")
+logger = logging.getLogger("placidway.chat")
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _TREATMENTS = (
     ("adenocarcinoma", "Alternative Adenocarcinoma Cancer Treatment"),
@@ -53,6 +56,16 @@ class FeedbackRequest(BaseModel):
     log_id: int
     rating: str
     comment: str | None = None
+
+
+def _trace(record: dict) -> None:
+    log_turn(record)
+    if record.get("fallback"):
+        logger.warning(
+            "fallback reason=%s raw=%s",
+            record.get("verifier_reason"),
+            json.dumps(record.get("raw_llm"), ensure_ascii=False)[:4000],
+        )
 
 
 def _sources(hits: list[dict]) -> list[dict]:
@@ -131,13 +144,18 @@ def index():
 def chat(body: ChatRequest, request: Request) -> dict:
     enforce_rate_limit(request)
     started = time.perf_counter()
+    timings: dict[str, int] = {}
+    stage = time.perf_counter()
     routed = route(body.message)
+    timings["router_ms"] = int((time.perf_counter() - stage) * 1000)
     language = "en"
     rewritten = body.message
     entities: dict = {}
     hits: list[dict] = []
     verifier_status = "template"
     grounded = True
+    raw_llm = None
+    verifier_reason = ""
     if routed.intent == "greeting":
         answer = greeting()
     elif routed.intent == "booking":
@@ -147,19 +165,23 @@ def chat(body: ChatRequest, request: Request) -> dict:
         grounded = False
     else:
         try:
+            stage = time.perf_counter()
             rewritten_obj = rewrite(body.message, [turn.model_dump() for turn in body.history][-6:])
+            timings["rewrite_ms"] = int((time.perf_counter() - stage) * 1000)
             language = rewritten_obj["language"]
             rewritten = rewritten_obj["standalone_query_en"]
             entities = rewritten_obj["entities"]
             result = get_retriever().search(rewritten, intent=routed.intent, entities=entities)
+            timings.update(result.timings)
             hits = [hit.__dict__ for hit in result.hits]
             if result.below_threshold or not hits:
                 answer = medical_advice() if routed.intent == "medical_advice" else fallback()
                 grounded = routed.intent == "medical_advice"
                 verifier_status = "below_threshold"
+                verifier_reason = "below_threshold"
                 db.log_unanswered(body.message, "below_threshold")
             else:
-                draft, verifier_status = generate_checked(
+                draft, verifier_status, attempts, stage_timings = generate_checked(
                     rewritten,
                     hits,
                     result.prices,
@@ -168,6 +190,9 @@ def chat(body: ChatRequest, request: Request) -> dict:
                     treatment=_treatment(rewritten, entities),
                     clinic_names=_clinic_names(),
                 )
+                timings.update(stage_timings)
+                raw_llm = [item.get("raw") for item in attempts]
+                verifier_reason = attempts[-1].get("verifier_reason") or ""
                 answer = draft["answer"]
                 grounded = bool(draft.get("grounded"))
             if routed.intent == "medical_advice":
@@ -184,6 +209,21 @@ def chat(body: ChatRequest, request: Request) -> dict:
     if routed.intent in {"price", "comparison", "info", "medical_advice"} and grounded:
         show_disclaimer = db.claim_disclaimer(body.session_id)
     latency_ms = int((time.perf_counter() - started) * 1000)
+    timings["total_ms"] = latency_ms
+    is_fallback = answer.startswith("I couldn't find that") or verifier_status not in {"pass", "template"}
+    if is_fallback:
+        _trace(
+            {
+                "question": body.message,
+                "rewritten": rewritten,
+                "intent": routed.intent,
+                "timings": timings,
+                "verifier_reason": verifier_reason or verifier_status,
+                "raw_llm": raw_llm,
+                "fallback": True,
+            }
+        )
+    logger.info("chat timings %s", json.dumps(timings))
     log_id = db.log_chat(
         session_id=body.session_id,
         question=body.message,
@@ -206,6 +246,7 @@ def chat(body: ChatRequest, request: Request) -> dict:
         "show_disclaimer": show_disclaimer,
         "offer_lead_form": routed.intent in {"price", "comparison", "lead"},
         "log_id": log_id,
+        "debug": {"timings": timings, "verifier_reason": verifier_reason, "verifier_status": verifier_status},
     }
 
 
