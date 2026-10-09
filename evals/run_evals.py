@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 from pathlib import Path
 
 import httpx
 import yaml
+
+from app.normalize import extract_numbers
 
 ROOT = Path(__file__).resolve().parents[1]
 GOLDEN = Path(__file__).parent / "golden.yaml"
@@ -26,8 +29,27 @@ REQUIRED = [
 ]
 
 
+_NUMBER_ONLY = re.compile(r"^[\d,.\s$]+(?:usd|dollars)?$", re.IGNORECASE)
+PRIOR_HISTORY = {"q4-recovery": "q3-included", "q8-premise": "q1-cost"}
+
+
 def _contains(text: str, needle: str) -> bool:
+    if _NUMBER_ONLY.match(needle.strip()):
+        wanted = extract_numbers(needle)
+        if wanted:
+            return set(wanted) <= set(extract_numbers(text))
     return needle.lower() in text.lower()
+
+
+def _history(case: dict, produced: dict[str, dict]) -> list[dict]:
+    prior_id = PRIOR_HISTORY.get(case["id"])
+    if prior_id and prior_id in produced:
+        prior = produced[prior_id]
+        return [
+            {"role": "user", "content": prior["question"]},
+            {"role": "assistant", "content": prior["answer"]},
+        ]
+    return list(case.get("history") or [])
 
 
 def check(case: dict, payload: dict) -> tuple[bool, list[str]]:
@@ -63,6 +85,7 @@ def main() -> None:
     cases = yaml.safe_load(GOLDEN.read_text(encoding="utf-8"))
     rows = []
     latencies = []
+    produced: dict[str, dict] = {}
     with httpx.Client(timeout=180) as client:
         for case in cases:
             started = time.perf_counter()
@@ -71,13 +94,18 @@ def main() -> None:
                 json={
                     "session_id": f"eval-{case['id']}",
                     "message": case["question"],
-                    "history": case.get("history") or [],
+                    "history": _history(case, produced),
                 },
             )
             latency_ms = (time.perf_counter() - started) * 1000
             latencies.append(latency_ms)
             payload = response.json()
             passed, reasons = check(case, payload)
+            produced[case["id"]] = {
+                "id": case["id"],
+                "question": case["question"],
+                "answer": payload.get("answer") or "",
+            }
             rows.append(
                 {
                     "id": case["id"],

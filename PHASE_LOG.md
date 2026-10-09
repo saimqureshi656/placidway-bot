@@ -131,3 +131,11 @@ Classification of every failure:
 - adrenal-cost, anal-cost, inpatient-difference, optional-lak, exclusion-ambulance, clinic-address, price-list, average-cost, spanish-anal, arabic-anal, turkey-followup, efficacy, lead, specialist-approx, followup-months, stem-mexico, intratumoral, blood-exclusion, profile-start, english-staff: **BOT**. A follow-up probe of the adrenal question returned Groq HTTP 429. `generate` turns that into an empty fallback, and the verifier then reports `grounded is false`. These are rate-limit failures, not evidence that the pages lack the fact. Intent mismatches on the Spanish, Arabic, stem-cell, and efficacy questions happened on the same 429 path, because a failed classifier falls back to `info`.
 
 q7 passed the checker and is not in the failure list. Its answer repeats the medical template and cites chunks the model did not use. That is a BOT issue for groups D and H.
+
+## Fix B: eval checker
+
+Files changed: `evals/run_evals.py`.
+
+Numeric `must_contain` needles are compared with `app.normalize.extract_numbers`, so `$1,000` satisfies `1000` and `18,995` satisfies the same amount with a different separator. Other needles stay as case-insensitive substrings.
+
+q4 is sent with the live q3 question and answer as history. q8 is sent with the live q1 question and answer as history. The canned history in `golden.yaml` is used only if that earlier case did not run.
