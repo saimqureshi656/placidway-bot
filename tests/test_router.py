@@ -1,4 +1,5 @@
-from app.router import is_followup, route
+from app.llm import TokenBucket
+from app.router import choose_intent, is_followup, route
 
 
 def test_followup_is_rewritten_before_rules():
@@ -32,3 +33,23 @@ def test_price_premise_keeps_the_number():
 def test_ozone_comparison():
     result = route("Is ozone therapy cheaper in Turkey or Mexico?")
     assert result.intent == "comparison"
+
+
+def test_cure_is_medical_advice():
+    assert route("Will this cure my cancer?").intent == "medical_advice"
+    assert route("What is the success rate?").intent == "medical_advice"
+    assert route("Is it effective for me?").intent == "medical_advice"
+
+
+def test_safety_intent_wins_a_disagreement():
+    assert choose_intent("price", "medical_advice") == "medical_advice"
+    assert choose_intent("info", "booking") == "booking"
+    assert choose_intent("price", "out_of_scope") == "out_of_scope"
+    assert choose_intent("medical_advice", "booking") == "medical_advice"
+    assert choose_intent("price", "info") == "info"
+
+
+def test_gen_bucket_skips_when_empty():
+    bucket = TokenBucket(rate=1, per_seconds=60)
+    assert bucket.take() is True
+    assert bucket.take() is False

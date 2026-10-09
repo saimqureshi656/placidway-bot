@@ -15,10 +15,19 @@ from app import db
 from app.config import ROOT, get_settings
 from app.diagnostics import log_turn
 from app.generate import generate_checked
+from app.llm import LLMError, llm_calls, start_llm_log
 from app.retrieve import get_retriever
 from app.router import resolve
 from app.security import enforce_admin, enforce_rate_limit
-from app.templates import booking, fallback, friendly_error, greeting, medical_advice, out_of_scope
+from app.templates import (
+    booking,
+    fallback,
+    friendly_error,
+    greeting,
+    medical_advice,
+    out_of_scope,
+    unavailable,
+)
 from ingest.build_index import INDEX_DIR
 from ingest.prices import PRICES_PATH
 
@@ -163,21 +172,131 @@ def index():
     return {"status": "ok", "message": "Chat UI is not built yet."}
 
 
+def _finish(
+    *,
+    body: ChatRequest,
+    answer: str,
+    sources: list[dict],
+    intent: str,
+    answer_status: str,
+    grounded: bool,
+    language: str,
+    rewritten: str,
+    hits: list[dict],
+    verifier_status: str,
+    verifier_reason: str,
+    timings: dict,
+    started: float,
+    show_disclaimer: bool,
+    raw_llm,
+    cache: bool = False,
+) -> dict:
+    latency_ms = int((time.perf_counter() - started) * 1000)
+    timings["total_ms"] = latency_ms
+    calls = [] if cache else llm_calls()
+    is_fallback = answer.startswith("I couldn't find that") or verifier_status not in {"pass", "template", "premise"}
+    if is_fallback and verifier_status != "error":
+        _trace(
+            {
+                "question": body.message,
+                "rewritten": rewritten,
+                "intent": intent,
+                "timings": timings,
+                "verifier_reason": verifier_reason or verifier_status,
+                "raw_llm": raw_llm,
+                "fallback": True,
+            }
+        )
+    logger.info("chat timings %s calls %s", json.dumps(timings), json.dumps(calls))
+    log_id = db.log_chat(
+        session_id=body.session_id,
+        question=body.message,
+        language=language,
+        intent=intent,
+        rewritten_query=rewritten,
+        top_chunk_ids=",".join(hit["chunk_id"] for hit in hits[:5]),
+        rerank_top_score=hits[0]["score"] if hits else None,
+        answer=answer,
+        grounded=grounded,
+        verifier_status=verifier_status,
+        latency_ms=latency_ms,
+    )
+    if not cache:
+        db.log_llm_calls(log_id, calls)
+    payload = {
+        "answer": answer,
+        "sources": sources,
+        "intent": intent,
+        "answer_status": answer_status,
+        "grounded": grounded,
+        "language": language,
+        "show_disclaimer": show_disclaimer,
+        "offer_lead_form": intent in {"price", "comparison", "lead"},
+        "log_id": log_id,
+        "debug": {
+            "timings": timings,
+            "verifier_reason": verifier_reason,
+            "verifier_status": verifier_status,
+            "llm_calls": calls,
+            "cache": cache,
+        },
+    }
+    return payload
+
+
 @app.post("/api/chat")
 def chat(body: ChatRequest, request: Request) -> dict:
     enforce_rate_limit(request)
+    if db.questions_today() >= db.DAILY_QUESTION_CAP:
+        raise HTTPException(status_code=429, detail="Daily question limit reached")
     started = time.perf_counter()
-    timings: dict[str, int] = {}
-    stage = time.perf_counter()
     history = [turn.model_dump() for turn in body.history][-6:]
-    routed, rewritten_obj = resolve(body.message, history)
-    elapsed = int((time.perf_counter() - stage) * 1000)
-    if routed.method == "rule" and not rewritten_obj.get("is_followup"):
-        timings["router_ms"] = elapsed
-        timings["rewrite_ms"] = 0
-    else:
-        timings["router_ms"] = elapsed
-        timings["rewrite_ms"] = elapsed
+    key = db.cache_key(body.message, history)
+    cached = db.get_cached_answer(key)
+    if cached:
+        cached_debug = dict(cached.get("debug") or {})
+        cached_debug["cache"] = True
+        cached["debug"] = cached_debug
+        db.log_chat(
+            session_id=body.session_id,
+            question=body.message,
+            language=cached.get("language"),
+            intent=cached.get("intent"),
+            rewritten_query="",
+            top_chunk_ids="",
+            rerank_top_score=None,
+            answer=cached.get("answer"),
+            grounded=bool(cached.get("grounded")),
+            verifier_status="cache",
+            latency_ms=int((time.perf_counter() - started) * 1000),
+        )
+        return cached
+    start_llm_log()
+    timings: dict[str, int] = {}
+    try:
+        routed, rewritten_obj = resolve(body.message, history)
+    except (LLMError, ValueError, TypeError) as exc:
+        return _finish(
+            body=body,
+            answer=unavailable(),
+            sources=[],
+            intent="info",
+            answer_status="",
+            grounded=False,
+            language="en",
+            rewritten=body.message,
+            hits=[],
+            verifier_status="error",
+            verifier_reason=str(exc)[:300],
+            timings=timings,
+            started=started,
+            show_disclaimer=False,
+            raw_llm=None,
+        )
+    router_call = next((call for call in reversed(llm_calls()) if call.get("stage") == "router"), None)
+    if router_call:
+        timings["router_ms"] = int(router_call.get("latency_ms") or 0)
+        timings["rewrite_ms"] = timings["router_ms"]
     language = rewritten_obj["language"]
     rewritten = rewritten_obj["standalone_query_en"]
     entities: dict = rewritten_obj["entities"]
@@ -196,6 +315,8 @@ def chat(body: ChatRequest, request: Request) -> dict:
         answer = out_of_scope()
         grounded = False
         answer_status = ""
+    elif routed.intent == "medical_advice":
+        answer = medical_advice()
     else:
         try:
             result = get_retriever().search(rewritten, intent=routed.intent, entities=entities)
@@ -238,59 +359,41 @@ def chat(body: ChatRequest, request: Request) -> dict:
                 else:
                     answer = f"{advice} {rest}"
                 grounded = True
+        except LLMError as exc:
+            answer = unavailable()
+            grounded = False
+            answer_status = ""
+            verifier_status = "error"
+            verifier_reason = str(exc)[:300]
         except Exception:
             answer = friendly_error()
             grounded = False
             answer_status = ""
             verifier_status = "error"
-            if routed.intent == "medical_advice":
-                answer = medical_advice()
-                grounded = True
-                answer_status = "full"
+            verifier_reason = "error"
     show_disclaimer = False
     if routed.intent in {"price", "comparison", "info", "medical_advice"} and grounded:
         show_disclaimer = db.claim_disclaimer(body.session_id)
-    latency_ms = int((time.perf_counter() - started) * 1000)
-    timings["total_ms"] = latency_ms
-    is_fallback = answer.startswith("I couldn't find that") or verifier_status not in {"pass", "template"}
-    if is_fallback:
-        _trace(
-            {
-                "question": body.message,
-                "rewritten": rewritten,
-                "intent": routed.intent,
-                "timings": timings,
-                "verifier_reason": verifier_reason or verifier_status,
-                "raw_llm": raw_llm,
-                "fallback": True,
-            }
-        )
-    logger.info("chat timings %s", json.dumps(timings))
-    log_id = db.log_chat(
-        session_id=body.session_id,
-        question=body.message,
-        language=language,
-        intent=routed.intent,
-        rewritten_query=rewritten,
-        top_chunk_ids=",".join(hit["chunk_id"] for hit in hits[:5]),
-        rerank_top_score=hits[0]["score"] if hits else None,
+    payload = _finish(
+        body=body,
         answer=answer,
+        sources=_sources(hits, cited),
+        intent=routed.intent,
+        answer_status=answer_status,
         grounded=grounded,
+        language=language,
+        rewritten=rewritten,
+        hits=hits,
         verifier_status=verifier_status,
-        latency_ms=latency_ms,
+        verifier_reason=verifier_reason,
+        timings=timings,
+        started=started,
+        show_disclaimer=show_disclaimer,
+        raw_llm=raw_llm,
     )
-    return {
-        "answer": answer,
-        "sources": _sources(hits, cited),
-        "intent": routed.intent,
-        "answer_status": answer_status,
-        "grounded": grounded,
-        "language": language,
-        "show_disclaimer": show_disclaimer,
-        "offer_lead_form": routed.intent in {"price", "comparison", "lead"},
-        "log_id": log_id,
-        "debug": {"timings": timings, "verifier_reason": verifier_reason, "verifier_status": verifier_status},
-    }
+    if verifier_status in {"pass", "template", "premise"}:
+        db.save_cached_answer(key, payload)
+    return payload
 
 
 @app.post("/api/lead")

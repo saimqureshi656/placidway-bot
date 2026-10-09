@@ -30,6 +30,9 @@ class Settings:
     groq_model: str
     cerebras_api_key: str
     cerebras_model: str
+    router_model: str
+    gen_model: str
+    gen_fallback_model: str
     rerank_threshold: float
     top_k: int
     admin_token: str
@@ -43,9 +46,12 @@ def get_settings() -> Settings:
     return Settings(
         llm_provider=env.get("LLM_PROVIDER", "groq"),
         groq_api_key=env.get("GROQ_API_KEY", ""),
-        groq_model=env.get("GROQ_MODEL", ""),
-        cerebras_api_key=env.get("CEREBRAS_API_KEY", ""),
+        groq_model=env.get("GROQ_MODEL", "openai/gpt-oss-120b"),
+        cerebras_api_key=env.get("CEREBRAS_API_KEY") or env.get("CEREBRA_API_KEY", ""),
         cerebras_model=env.get("CEREBRAS_MODEL", ""),
+        router_model=env.get("ROUTER_MODEL", "qwen-3.8-27b"),
+        gen_model=env.get("GEN_MODEL", "gpt-oss-120b"),
+        gen_fallback_model=env.get("GEN_FALLBACK_MODEL", "qwen-3.8-27b"),
         rerank_threshold=float(env.get("RERANK_THRESHOLD", "0.005")),
         top_k=int(env.get("TOP_K", "5")),
         admin_token=env.get("ADMIN_TOKEN", ""),

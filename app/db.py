@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import sqlite3
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from app.config import ROOT, get_settings
@@ -49,7 +52,26 @@ CREATE TABLE IF NOT EXISTS sessions (
     session_id TEXT PRIMARY KEY,
     disclaimer_shown INTEGER
 );
+CREATE TABLE IF NOT EXISTS answer_cache (
+    cache_key TEXT PRIMARY KEY,
+    ts REAL,
+    payload TEXT
+);
+CREATE TABLE IF NOT EXISTS llm_calls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts REAL,
+    log_id INTEGER,
+    stage TEXT,
+    provider TEXT,
+    model TEXT,
+    tokens_in INTEGER,
+    tokens_out INTEGER,
+    latency_ms INTEGER,
+    error TEXT
+);
 """
+
+DAILY_QUESTION_CAP = 1500
 
 
 def connect() -> sqlite3.Connection:
@@ -92,6 +114,73 @@ def log_chat(**fields) -> int:
             ),
         )
         return int(cursor.lastrowid)
+
+
+def questions_today() -> int:
+    now = datetime.now(timezone.utc)
+    start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc).timestamp()
+    with connect() as connection:
+        row = connection.execute("SELECT COUNT(*) AS count FROM logs WHERE ts >= ?", (start,)).fetchone()
+    return int(row["count"])
+
+
+def cache_key(question: str, history: list[dict]) -> str:
+    normalized = " ".join(question.lower().split())
+    turns = [
+        {
+            "role": turn.get("role", "user"),
+            "content": " ".join(str(turn.get("content") or "").lower().split()),
+        }
+        for turn in history
+    ]
+    raw = normalized + "\n" + json.dumps(turns, ensure_ascii=False)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def get_cached_answer(key: str) -> dict | None:
+    with connect() as connection:
+        row = connection.execute("SELECT payload FROM answer_cache WHERE cache_key = ?", (key,)).fetchone()
+    if not row:
+        return None
+    return json.loads(row["payload"])
+
+
+def save_cached_answer(key: str, payload: dict) -> None:
+    with connect() as connection:
+        connection.execute(
+            """
+            INSERT INTO answer_cache (cache_key, ts, payload) VALUES (?, ?, ?)
+            ON CONFLICT(cache_key) DO UPDATE SET ts = excluded.ts, payload = excluded.payload
+            """,
+            (key, time.time(), json.dumps(payload, ensure_ascii=False)),
+        )
+
+
+def log_llm_calls(log_id: int, calls: list[dict]) -> None:
+    if not calls:
+        return
+    with connect() as connection:
+        connection.executemany(
+            """
+            INSERT INTO llm_calls (
+                ts, log_id, stage, provider, model, tokens_in, tokens_out, latency_ms, error
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    time.time(),
+                    log_id,
+                    call.get("stage"),
+                    call.get("provider"),
+                    call.get("model"),
+                    call.get("tokens_in") or 0,
+                    call.get("tokens_out") or 0,
+                    call.get("latency_ms") or 0,
+                    call.get("error") or "",
+                )
+                for call in calls
+            ],
+        )
 
 
 def log_unanswered(question: str, reason: str) -> None:

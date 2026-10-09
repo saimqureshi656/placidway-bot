@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import re
+import sys
 import time
 from pathlib import Path
 
@@ -81,13 +83,47 @@ def percentile(values: list[float], fraction: float) -> float:
     return ordered[index]
 
 
+def _provider_error(payload: dict) -> str:
+    debug = payload.get("debug") or {}
+    if debug.get("verifier_status") == "error":
+        return str(debug.get("verifier_reason") or "provider error")
+    for call in debug.get("llm_calls") or []:
+        if call.get("error"):
+            return f"{call.get('provider')} {call.get('model')}: {call.get('error')}"
+    answer = payload.get("answer") or ""
+    if answer.startswith("I'm temporarily unavailable"):
+        return answer
+    return ""
+
+
+def _format_calls(payload: dict) -> str:
+    calls = (payload.get("debug") or {}).get("llm_calls") or []
+    if not calls:
+        return "none"
+    parts = []
+    for call in calls:
+        parts.append(
+            f"{call.get('stage')} {call.get('provider')}/{call.get('model')} "
+            f"in={call.get('tokens_in')} out={call.get('tokens_out')} {call.get('latency_ms')}ms"
+            + (f" error={call.get('error')}" if call.get("error") else "")
+        )
+    return "; ".join(parts)
+
+
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--required", action="store_true", help="Run only the 9 required questions")
+    args = parser.parse_args()
     cases = yaml.safe_load(GOLDEN.read_text(encoding="utf-8"))
+    if args.required:
+        cases = [case for case in cases if case["id"] in REQUIRED]
+        cases.sort(key=lambda case: REQUIRED.index(case["id"]))
     rows = []
     latencies = []
     produced: dict[str, dict] = {}
+    gap_seconds = 13 if args.required else 25
     with httpx.Client(timeout=180) as client:
-        for case in cases:
+        for index, case in enumerate(cases):
             started = time.perf_counter()
             response = client.post(
                 f"{API}/api/chat",
@@ -99,7 +135,15 @@ def main() -> None:
             )
             latency_ms = (time.perf_counter() - started) * 1000
             latencies.append(latency_ms)
+            if response.status_code >= 400:
+                print(f"ABORT {case['id']} HTTP {response.status_code}: {response.text[:500]}")
+                sys.exit(1)
             payload = response.json()
+            provider_error = _provider_error(payload)
+            if provider_error:
+                print(f"ABORT {case['id']} provider error: {provider_error}")
+                print(_format_calls(payload))
+                sys.exit(1)
             passed, reasons = check(case, payload)
             produced[case["id"]] = {
                 "id": case["id"],
@@ -117,6 +161,8 @@ def main() -> None:
                     "passed": passed,
                     "reasons": reasons,
                     "latency_ms": latency_ms,
+                    "calls": _format_calls(payload),
+                    "timings": (payload.get("debug") or {}).get("timings") or {},
                 }
             )
             debug = payload.get("debug") or {}
@@ -127,8 +173,12 @@ def main() -> None:
                     f"timings={debug.get('timings')}"
                 )
             else:
-                print(f"PASS {case['id']} {latency_ms:.0f}ms timings={debug.get('timings')}")
-            time.sleep(25)
+                print(
+                    f"PASS {case['id']} {latency_ms:.0f}ms timings={debug.get('timings')} "
+                    f"calls={_format_calls(payload)}"
+                )
+            if index < len(cases) - 1:
+                time.sleep(gap_seconds)
     by_category: dict[str, list[bool]] = {}
     for row in rows:
         by_category.setdefault(row["category"], []).append(row["passed"])
@@ -158,6 +208,10 @@ def main() -> None:
         lines.append(f"Result: {'pass' if row['passed'] else 'fail'}")
         if row["reasons"]:
             lines.append("Reasons: " + "; ".join(row["reasons"]))
+        lines.append(f"Models: {row.get('calls') or 'none'}")
+        timings = row.get("timings") or {}
+        if timings:
+            lines.append("Stage ms: " + ", ".join(f"{name}={value}" for name, value in timings.items()))
         lines.append("")
     lines.extend(["## Pass rate by category", ""])
     for category, flags in by_category.items():

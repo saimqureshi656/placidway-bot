@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.llm import LLMError, complete_json
+from app.llm import LLMError, complete_router_json
 
 SYSTEM = """Rewrite the user's latest message into one standalone English search query.
 Use the history. Reply JSON only:
@@ -26,7 +26,7 @@ def rewrite(message: str, history: list[dict] | None = None) -> dict:
     history = history or []
     user = f"History:\n{_history_text(history)}\n\nLatest:\n{message}"
     try:
-        parsed = complete_json(SYSTEM, user, reasoning_effort="low", max_tokens=220)
+        parsed = complete_router_json(SYSTEM, user)
     except (LLMError, ValueError, TypeError):
         parsed = {}
     entities = parsed.get("entities") if isinstance(parsed.get("entities"), dict) else {}

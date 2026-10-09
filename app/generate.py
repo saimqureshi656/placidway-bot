@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import time
 
-from app.llm import LLMError, complete_json
+from app.llm import LLMError, complete_generate_json
 from app.templates import quote_url
 from app.verify import fallback_draft, premise_correction, premise_ok, verify
 
@@ -86,8 +86,10 @@ def generate(
     if extra_instruction:
         user += "\n\n" + extra_instruction
     try:
-        parsed = complete_json(system, user, reasoning_effort="medium", max_tokens=700)
-    except (LLMError, ValueError, TypeError) as exc:
+        parsed = complete_generate_json(system, user)
+    except LLMError:
+        raise
+    except (ValueError, TypeError) as exc:
         draft = fallback_draft()
         draft["raw"] = {"error": type(exc).__name__, "detail": str(exc)[:500]}
         return draft

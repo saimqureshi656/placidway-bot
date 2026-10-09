@@ -10,7 +10,7 @@ from fastapi import HTTPException, Request
 from app.config import get_settings
 
 _HITS: dict[str, deque[float]] = defaultdict(deque)
-LIMIT = 20
+LIMIT = 10
 WINDOW_SECONDS = 60.0
 
 

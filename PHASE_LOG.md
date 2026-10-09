@@ -220,3 +220,29 @@ The other required cases and nearly every later case failed because Groq returne
 One miss was not a rate limit: "Will this cure my cancer?" was classified `out_of_scope` instead of `medical_advice`.
 
 Stopped here, as requested. Phases 9, 10, and 11 were not started.
+
+## Cerebras routing and required eval
+
+Files changed: `app/llm.py`, `app/config.py`, `app/router.py`, `app/rewrite.py`, `app/generate.py`, `app/main.py`, `app/db.py`, `app/security.py`, `app/templates.py`, `evals/run_evals.py`, `tests/test_router.py`, `.env.example`.
+
+Every chat message makes one Cerebras `qwen-3.8-27b` call with `reasoning_effort` none. That call returns intent, the standalone English query, language, entities, follow-up, and user numbers. If that call fails, the router falls back to Groq `openai/gpt-oss-20b`. Template intents short-circuit after the call. When the rules and the model disagree, the order is medical advice, then booking, then out of scope. "cure", "will it work", "success rate", "survival", and "is it effective" are medical advice.
+
+Generation uses Cerebras `gpt-oss-120b` at `reasoning_effort` medium, temperature 0, and a 700 token cap, with at most 5 chunks. A token bucket allows 5 of those requests per minute; when it is empty the call uses Cerebras `qwen-3.8-27b` instead of waiting. The last generation fallback is Groq `openai/gpt-oss-120b`. If every provider fails, the reply is "I'm temporarily unavailable..." and the log status is `error`, not unanswered.
+
+Public chat is limited to 10 requests per minute per IP and 1500 questions per day. Successful answers are cached in SQLite by normalized question and history. Each model call logs provider, model, tokens in and out, and latency.
+
+`python -m evals.run_evals --required` waits 13 seconds between questions. A provider error aborts the run instead of counting as a failed answer. This run had no provider error.
+
+Result: **6/9**. p50 3332 ms, p95 6050 ms.
+
+- q1 pass. Router qwen-3.8-27b 325/97 tokens, 1993 ms. Generate gpt-oss-120b twice (2343/475 and 2371/533). Total 6050 ms.
+- q2 fail. The verifier rejected an unknown price id, so the reply was the quote fallback. Router 320/90. Generate gpt-oss-120b twice. Total 4033 ms.
+- q2b pass. Mexico prices stated, Thailand called not listed. Router 324/96. Generate 2294/424. Total 3332 ms.
+- q3 pass. Out-patient and in-patient inclusions. Router 324/92. Generate 1374/566. Total 3263 ms.
+- q4 fail. Says recovery time is not listed and mentions the three-month follow-up, but not the three-week program, so the checker missed "week". Router 524/57. Generate 1442/611. Total 3502 ms.
+- q5 pass. Booking template. Router only, 320/79, 1013 ms.
+- q6 pass. Out-of-scope template. Router only, 319/85, 888 ms.
+- q7 pass. Medical template once, no sources. Router only, 319/83, 745 ms.
+- q8 fail. Premise text is "I can't confirm that. Our page lists 18,995 USD (starting from) for adenocarcinoma cancer treatment." No source URL was attached, so the cite check failed. Router 408/64. Generate gpt-oss-120b twice. Total 4287 ms.
+
+Stopped after this required run.

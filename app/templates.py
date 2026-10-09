@@ -51,6 +51,13 @@ def price_not_listed(subject: str) -> str:
     )
 
 
+def unavailable() -> str:
+    return (
+        "I'm temporarily unavailable. Please try again in a moment, or request a free quote: "
+        f"{quote_url()}"
+    )
+
+
 def friendly_error() -> str:
     return (
         "I'm having trouble right now, please try again or request a free quote: "
