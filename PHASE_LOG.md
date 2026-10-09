@@ -194,6 +194,29 @@ Files changed: `app/llm.py`, `app/router.py`, `app/rewrite.py`, `app/generate.py
 
 Before this change, the diagnostic eval p50 was 20983 ms and p95 was 32605 ms. Rerank of 20 full passages was most of that time.
 
-Router and rewrite calls use `reasoning_effort` low and a 220 token cap (80 for the classifier-only path). Generation uses `reasoning_effort` medium and a 700 token cap. Startup warms the embedding model and the reranker. Rerank now scores the top 8 fused candidates, truncated to 500 characters. The eval waits 25 seconds between cases so a burst does not immediately exhaust the provider token window.
+Router and rewrite calls use `reasoning_effort` low and a 220 token cap (80 for the classifier-only path). Generation uses `reasoning_effort` medium and a 700 token cap. Startup warms the embedding model and the reranker. Rerank scores the top 8 unflagged candidates first. Long clinic tables are shortened to the rows that mention the query's treatment or country, so Fizikon and the Mexico ozone row stay inside the scorer. A local check after that change: ozone comparison best score 0.5655 on the clinic table, rerank about 2.0 s; adenocarcinoma cost best score 0.9953, rerank about 2.0 s. The eval waits 25 seconds between cases so a burst does not immediately exhaust the provider token window.
 
 If the model returns an answer and claims but omits `answer_status`, the status is inferred: `not_listed` when the answer says the fact is not listed, `partial` when that is a missing comparison side such as Thailand, otherwise `full`. That avoids a second paid call that discards a usable answer.
+
+## Eval after fixes A–I
+
+`test_results.md`: **7/32**. p50 **5238 ms**, p95 **6312 ms**. Before these latency changes the diagnostic run was p50 20983 ms, p95 32605 ms.
+
+The one fully generated price answer, q1, finished in 4551 ms (rerank 2300 ms, generate 2163 ms, verify 6 ms).
+
+Category pass rates:
+- required: 4/9
+- price: 0/10
+- info: 0/3
+- comparison: 0/3
+- language: 0/2
+- safety: 2/3
+- chat: 1/2
+
+Required answers that passed: q1 cost, q5 booking, q6 weather, q7 diabetes. q7 is the medical sentence once, with no sources, because retrieval was below threshold and no page fact was added.
+
+The other required cases and nearly every later case failed because Groq returned HTTP 429, tokens per day, limit 200000. After q1 the provider rejected the rewrite or the answer call. Follow-ups then kept the raw question, retrieval fell under the threshold, and the reply was the quote fallback. That includes q2, q2b, q3, q4, and q8. It is not a fresh reading of those pages.
+
+One miss was not a rate limit: "Will this cure my cancer?" was classified `out_of_scope` instead of `medical_advice`.
+
+Stopped here, as requested. Phases 9, 10, and 11 were not started.

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import pickle
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RRF_K = 60
 CANDIDATES = 20
 RERANK_POOL = 8
-RERANK_CHARS = 500
+RERANK_CHARS = 650
 FLAG_WEIGHT = 0.25
 TREATMENT_BOOST = 0.08
 COUNTRY_BOOST = 0.04
@@ -103,7 +104,14 @@ class Retriever:
         ranked = sorted(fused, key=fused.get, reverse=True)[:CANDIDATES]
         retrieve_ms = int((time.perf_counter() - started) * 1000)
         rerank_started = time.perf_counter()
-        reranked = self._rerank(query, ranked[:RERANK_POOL])
+        unflagged = [
+            index
+            for index in ranked
+            if not self.chunks[index].get("flagged")
+            and self.chunks[index].get("section_type") not in {"testimonial", "video_list"}
+        ]
+        flagged = [index for index in ranked if index not in unflagged]
+        reranked = self._rerank(query, (unflagged + flagged)[:RERANK_POOL])
         rerank_ms = int((time.perf_counter() - rerank_started) * 1000)
         hits = reranked[: self.top_k]
         best = hits[0].score if hits else 0.0
@@ -165,10 +173,47 @@ class Retriever:
                 boosted[chunk_index] += COUNTRY_BOOST
         return boosted
 
+    def _rerank_text(self, query: str, text: str) -> str:
+        if len(text) <= RERANK_CHARS:
+            return text
+        stop = {
+            "therapy",
+            "cheaper",
+            "treatment",
+            "cost",
+            "price",
+            "about",
+            "what",
+            "does",
+            "much",
+            "with",
+            "from",
+            "this",
+            "that",
+            "program",
+            "package",
+            "alternative",
+            "medicine",
+            "cancer",
+            "included",
+            "include",
+        }
+        terms = [word for word in re.findall(r"[a-z0-9]+", query.lower()) if len(word) > 3 and word not in stop]
+        parts = re.split(r"(?=Clinic / Surgeon:)", text)
+        chosen = sorted(
+            (part.strip() for part in parts if any(term in part.lower() for term in terms)),
+            key=lambda part: sum(term in part.lower() for term in terms),
+            reverse=True,
+        )[:2]
+        head = text[:120]
+        if not chosen:
+            return text[:RERANK_CHARS]
+        return (head + "\n" + "\n".join(chosen))[:RERANK_CHARS]
+
     def _rerank(self, query: str, indexes: list[int]) -> list[Hit]:
         if not indexes:
             return []
-        documents = [self.chunks[index]["text"][:RERANK_CHARS] for index in indexes]
+        documents = [self._rerank_text(query, self.chunks[index]["text"]) for index in indexes]
         logits = [float(score) for score in self.reranker.rerank(query, documents)]
         hits: list[Hit] = []
         for chunk_index, logit in zip(indexes, logits):
