@@ -45,3 +45,19 @@ Tests: `pytest tests/test_router.py` — 5 passed (booking, weather, diabetes, $
 
 Open questions:
 - Cerebras is wired but `.env` has no Cerebras model, so fallback will not run until those values are set.
+
+## Phase 5: generation, verifier, premise check
+
+Files changed: `app/normalize.py`, `app/verify.py`, `app/generate.py`, `tests/test_normalize.py`, `tests/test_verify.py`, `tests/test_extract.py`, `tests/fixtures/boilerplate.html`.
+
+Decisions:
+- `18.995` and `18,995` are thousands-separators and become 18995. `30k` becomes 30000. Arabic-Indic and Persian digits are folded before parsing.
+- Every number in a grounded answer must occur in a cited chunk or a used price record. A URL must be on the seven-page allowlist or be the quote form. A clinic phrase ending in Clinic/Center/Hospital must match a known clinic name.
+- The quote form URL is allowed in addition to the seven pages, because the prescribed fallback includes it.
+- If the user states a price that matches none of the topic's answerable records, the answer has to start with "I can't confirm that."
+- Generation retries once with the verifier or premise failure text, then returns the fallback.
+
+Tests: `pytest tests/test_normalize.py tests/test_verify.py tests/test_extract.py` — 10 passed.
+
+Open questions:
+- Small structural numbers such as "3 weeks" fail the verifier if that digit is not also in the cited chunk.
