@@ -175,3 +175,9 @@ Files changed: `app/router.py`, `app/main.py`, `tests/test_router.py`.
 A follow-up (history present, and the message starts with "and", "what about", "how about", or "also", or is eight words or fewer) is rewritten before routing. The intent rules then run on that rewritten query.
 
 When the rules do not match, one LLM call returns both the intent and the rewrite, including treatment, clinic, country, and program. A message that already matches a rule and is not a follow-up skips that call. `route()` remains for the rule tests.
+
+## Fix G: comparison prompt
+
+Files changed: `app/generate.py`.
+
+A comparison must give each listed side the clinic name as written, the city or country, the exact price as written on the page, and the page's estimate disclaimer when a passage says the prices are estimates only. A missing side stays `partial`.
