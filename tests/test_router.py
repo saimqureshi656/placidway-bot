@@ -1,4 +1,10 @@
-from app.router import route
+from app.router import is_followup, route
+
+
+def test_followup_is_rewritten_before_rules():
+    assert is_followup("And what about recovery time?", [{"role": "user", "content": "cost"}]) is True
+    assert is_followup("And what about recovery time?", []) is False
+    assert is_followup("I heard it costs $50. Confirm that.", [{"role": "user", "content": "cost"}]) is True
 
 
 def test_booking_uses_template_intent():

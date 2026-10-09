@@ -16,8 +16,7 @@ from app.config import ROOT, get_settings
 from app.diagnostics import log_turn
 from app.generate import generate_checked
 from app.retrieve import get_retriever
-from app.rewrite import rewrite
-from app.router import route
+from app.router import resolve
 from app.security import enforce_admin, enforce_rate_limit
 from app.templates import booking, fallback, friendly_error, greeting, medical_advice, out_of_scope
 from ingest.build_index import INDEX_DIR
@@ -169,11 +168,18 @@ def chat(body: ChatRequest, request: Request) -> dict:
     started = time.perf_counter()
     timings: dict[str, int] = {}
     stage = time.perf_counter()
-    routed = route(body.message)
-    timings["router_ms"] = int((time.perf_counter() - stage) * 1000)
-    language = "en"
-    rewritten = body.message
-    entities: dict = {}
+    history = [turn.model_dump() for turn in body.history][-6:]
+    routed, rewritten_obj = resolve(body.message, history)
+    elapsed = int((time.perf_counter() - stage) * 1000)
+    if routed.method == "rule" and not rewritten_obj.get("is_followup"):
+        timings["router_ms"] = elapsed
+        timings["rewrite_ms"] = 0
+    else:
+        timings["router_ms"] = elapsed
+        timings["rewrite_ms"] = elapsed
+    language = rewritten_obj["language"]
+    rewritten = rewritten_obj["standalone_query_en"]
+    entities: dict = rewritten_obj["entities"]
     hits: list[dict] = []
     verifier_status = "template"
     grounded = True
@@ -191,12 +197,6 @@ def chat(body: ChatRequest, request: Request) -> dict:
         answer_status = ""
     else:
         try:
-            stage = time.perf_counter()
-            rewritten_obj = rewrite(body.message, [turn.model_dump() for turn in body.history][-6:])
-            timings["rewrite_ms"] = int((time.perf_counter() - stage) * 1000)
-            language = rewritten_obj["language"]
-            rewritten = rewritten_obj["standalone_query_en"]
-            entities = rewritten_obj["entities"]
             result = get_retriever().search(rewritten, intent=routed.intent, entities=entities)
             timings.update(result.timings)
             hits = [hit.__dict__ for hit in result.hits]

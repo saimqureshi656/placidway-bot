@@ -167,3 +167,11 @@ A stated price is compared only with answerable price records for the current tr
 When that topic has no price records, the reply says the amount does not match any listed ITC package price and gives the clinic starting-from price (`p_profile_starting`, otherwise the first package starting-from row) with its page URL.
 
 Empty qualifier and program fields are omitted. The reply no longer fills them with "listed" or "the listed program".
+
+## Fix F: rewrite before routing
+
+Files changed: `app/router.py`, `app/main.py`, `tests/test_router.py`.
+
+A follow-up (history present, and the message starts with "and", "what about", "how about", or "also", or is eight words or fewer) is rewritten before routing. The intent rules then run on that rewritten query.
+
+When the rules do not match, one LLM call returns both the intent and the rewrite, including treatment, clinic, country, and program. A message that already matches a rule and is not a follow-up skips that call. `route()` remains for the rule tests.

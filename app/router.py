@@ -39,6 +39,19 @@ _MONEY = re.compile(
     r"(?:\$\s?\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)?\s*(?:usd|dollars))\b",
     re.IGNORECASE,
 )
+_FOLLOWUP = re.compile(r"^\s*(and\b|what about|how about|also\b)\b", re.IGNORECASE)
+_ARABIC = re.compile(r"[\u0600-\u06FF]")
+_SPANISH = re.compile(r"[¿¡]|\b(cuánto|cuesta|tratamiento|incluye)\b", re.IGNORECASE)
+
+_COMBINED = """Rewrite the latest user message into one standalone English search query and classify it.
+Use the history so a follow-up keeps the treatment, clinic, and country.
+Reply JSON only:
+{"intent":"greeting|booking|out_of_scope|medical_advice|lead|price|comparison|info","standalone_query_en":"","language":"en","entities":{"treatment":"","clinic":"","country":"","program":""},"is_followup":false}
+info means a question about the ITC clinic, its packages, or listed comparisons.
+language is the language of the latest message.
+"What about recovery time?" after adenocarcinoma asks about recovery time after that adenocarcinoma program.
+"What about in Turkey?" keeps the prior treatment and changes the country.
+"""
 
 
 @dataclass
@@ -74,6 +87,80 @@ def route_rules(message: str) -> Route | None:
     if numbers:
         return Route("price", numbers)
     return None
+
+
+def _blank_rewrite(message: str, *, followup: bool) -> dict:
+    language = "en"
+    if _ARABIC.search(message):
+        language = "ar"
+    elif _SPANISH.search(message):
+        language = "es"
+    return {
+        "standalone_query_en": message,
+        "language": language,
+        "entities": {"treatment": "", "clinic": "", "country": "", "program": ""},
+        "is_followup": followup,
+        "intent": "info",
+    }
+
+
+def is_followup(message: str, history: list[dict] | None) -> bool:
+    if not history:
+        return False
+    text = message.strip()
+    if _FOLLOWUP.search(text):
+        return True
+    return len(text.split()) <= 8
+
+
+def _history_text(history: list[dict]) -> str:
+    return "\n".join(f"{turn.get('role', 'user')}: {turn.get('content', '')}" for turn in history[-6:])
+
+
+def _from_llm(parsed: dict, message: str) -> dict:
+    entities = parsed.get("entities") if isinstance(parsed.get("entities"), dict) else {}
+    standalone = str(parsed.get("standalone_query_en") or "").strip() or message
+    intent = str(parsed.get("intent") or "info")
+    if intent not in INTENTS:
+        intent = "info"
+    return {
+        "standalone_query_en": standalone,
+        "language": str(parsed.get("language") or "en"),
+        "entities": {
+            "treatment": str(entities.get("treatment") or ""),
+            "clinic": str(entities.get("clinic") or ""),
+            "country": str(entities.get("country") or ""),
+            "program": str(entities.get("program") or ""),
+        },
+        "is_followup": bool(parsed.get("is_followup")),
+        "intent": intent,
+    }
+
+
+def resolve(message: str, history: list[dict] | None = None) -> tuple[Route, dict]:
+    """Route, rewriting follow-ups first. One LLM call when rules do not match."""
+    history = history or []
+    followup = is_followup(message, history)
+    if not followup:
+        ruled = route_rules(message)
+        if ruled is not None:
+            return ruled, _blank_rewrite(message, followup=False)
+    try:
+        parsed = complete_json(
+            _COMBINED,
+            f"History:\n{_history_text(history)}\n\nLatest:\n{message}",
+        )
+        rewritten = _from_llm(parsed, message)
+    except (LLMError, ValueError, TypeError):
+        rewritten = _blank_rewrite(message, followup=followup)
+        ruled = route_rules(rewritten["standalone_query_en"])
+        if ruled is not None:
+            return ruled, rewritten
+        return Route("info", _numbers(message), method="fallback"), rewritten
+    ruled = route_rules(rewritten["standalone_query_en"])
+    if ruled is not None:
+        return ruled, rewritten
+    return Route(rewritten["intent"], _numbers(rewritten["standalone_query_en"]), method="llm"), rewritten
 
 
 def route(message: str) -> Route:
