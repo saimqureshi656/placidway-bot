@@ -68,11 +68,19 @@ def _trace(record: dict) -> None:
         )
 
 
-def _sources(hits: list[dict]) -> list[dict]:
+def _cited_ids(draft: dict) -> set[str]:
+    cited: set[str] = set()
+    for claim in draft.get("claims") or []:
+        for chunk_id in claim.get("chunk_ids") or []:
+            cited.add(str(chunk_id))
+    return cited
+
+
+def _sources(hits: list[dict], cited: set[str]) -> list[dict]:
     seen: set[str] = set()
     sources = []
     for hit in hits:
-        if hit["url"] in seen:
+        if hit["chunk_id"] not in cited or hit["url"] in seen:
             continue
         seen.add(hit["url"])
         snippet = hit["text"].replace("\n", " ")[:200]
@@ -157,6 +165,7 @@ def chat(body: ChatRequest, request: Request) -> dict:
     answer_status = "full"
     raw_llm = None
     verifier_reason = ""
+    cited: set[str] = set()
     if routed.intent == "greeting":
         answer = greeting()
     elif routed.intent == "booking":
@@ -199,6 +208,7 @@ def chat(body: ChatRequest, request: Request) -> dict:
                 answer = draft["answer"]
                 answer_status = str(draft.get("answer_status") or "")
                 grounded = answer_status in {"full", "partial", "not_listed"}
+                cited = _cited_ids(draft)
             if routed.intent == "medical_advice":
                 answer = medical_advice() if answer == fallback() else f"{medical_advice()} {answer}"
                 grounded = True
@@ -247,7 +257,7 @@ def chat(body: ChatRequest, request: Request) -> dict:
     )
     return {
         "answer": answer,
-        "sources": _sources(hits),
+        "sources": _sources(hits, cited),
         "intent": routed.intent,
         "answer_status": answer_status,
         "grounded": grounded,

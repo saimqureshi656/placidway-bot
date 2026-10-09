@@ -151,3 +151,9 @@ The chat falls back only when retrieval is below the rerank threshold or verific
 The verifier accepts integers 1 through 12 when that integer appears in any retrieved chunk, including as a number word such as "three". Other numbers still have to appear in a cited chunk or a used price record.
 
 `grounded` stays on the API response so the eval checker can treat `full`, `partial`, and `not_listed` as answered. Greeting and booking use `full`. Out of scope leaves the status empty.
+
+## Fix D: cited sources only
+
+Files changed: `app/main.py`.
+
+Source chips are built only from chunk ids in the model's claims. Retrieved chunks that the answer does not cite are left off the list. A reply with no citations has no sources.
