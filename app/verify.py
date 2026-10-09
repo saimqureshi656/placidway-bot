@@ -53,8 +53,12 @@ def verify(
     *,
     clinic_names: list[str] | None = None,
 ) -> tuple[bool, str]:
-    if not draft.get("grounded", False):
-        return False, "grounded is false"
+    status = str(draft.get("answer_status") or "")
+    if status not in {"full", "partial", "not_listed"}:
+        return False, "answer_status must be full, partial, or not_listed"
+    answer = draft.get("answer") or ""
+    if "couldn't find that" in answer.lower():
+        return False, "answer refused even though passages were retrieved"
     ordered_ids = [chunk["chunk_id"] for chunk in chunks]
     chunk_ids = set(ordered_ids)
 
@@ -80,7 +84,10 @@ def verify(
     cited_chunks = [chunk for chunk in chunks if chunk["chunk_id"] in cited] or chunks
     used_prices = [record for record in prices if record["id"] in set(draft.get("used_price_ids") or [])]
     allowed_numbers = source_numbers(cited_chunks, used_prices or prices)
-    for number in extract_numbers(draft.get("answer") or ""):
+    retrieved_numbers = source_numbers(chunks, [])
+    for number in extract_numbers(answer):
+        if 1 <= number <= 12 and number in retrieved_numbers:
+            continue
         if number not in allowed_numbers:
             return False, f"number {number} is not in the cited sources"
     allowed_urls = set(ALLOWLIST) | {quote_url()}
@@ -139,5 +146,5 @@ def fallback_draft() -> dict:
         "answer": fallback(),
         "claims": [],
         "used_price_ids": [],
-        "grounded": False,
+        "answer_status": "",
     }

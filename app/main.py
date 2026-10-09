@@ -154,6 +154,7 @@ def chat(body: ChatRequest, request: Request) -> dict:
     hits: list[dict] = []
     verifier_status = "template"
     grounded = True
+    answer_status = "full"
     raw_llm = None
     verifier_reason = ""
     if routed.intent == "greeting":
@@ -163,6 +164,7 @@ def chat(body: ChatRequest, request: Request) -> dict:
     elif routed.intent == "out_of_scope":
         answer = out_of_scope()
         grounded = False
+        answer_status = ""
     else:
         try:
             stage = time.perf_counter()
@@ -177,6 +179,7 @@ def chat(body: ChatRequest, request: Request) -> dict:
             if result.below_threshold or not hits:
                 answer = medical_advice() if routed.intent == "medical_advice" else fallback()
                 grounded = routed.intent == "medical_advice"
+                answer_status = "full" if routed.intent == "medical_advice" else ""
                 verifier_status = "below_threshold"
                 verifier_reason = "below_threshold"
                 db.log_unanswered(body.message, "below_threshold")
@@ -194,17 +197,22 @@ def chat(body: ChatRequest, request: Request) -> dict:
                 raw_llm = [item.get("raw") for item in attempts]
                 verifier_reason = attempts[-1].get("verifier_reason") or ""
                 answer = draft["answer"]
-                grounded = bool(draft.get("grounded"))
+                answer_status = str(draft.get("answer_status") or "")
+                grounded = answer_status in {"full", "partial", "not_listed"}
             if routed.intent == "medical_advice":
                 answer = medical_advice() if answer == fallback() else f"{medical_advice()} {answer}"
                 grounded = True
+                if not answer_status:
+                    answer_status = "full"
         except Exception:
             answer = friendly_error()
             grounded = False
+            answer_status = ""
             verifier_status = "error"
             if routed.intent == "medical_advice":
                 answer = medical_advice()
                 grounded = True
+                answer_status = "full"
     show_disclaimer = False
     if routed.intent in {"price", "comparison", "info", "medical_advice"} and grounded:
         show_disclaimer = db.claim_disclaimer(body.session_id)
@@ -241,6 +249,7 @@ def chat(body: ChatRequest, request: Request) -> dict:
         "answer": answer,
         "sources": _sources(hits),
         "intent": routed.intent,
+        "answer_status": answer_status,
         "grounded": grounded,
         "language": language,
         "show_disclaimer": show_disclaimer,

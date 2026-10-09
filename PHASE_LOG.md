@@ -139,3 +139,15 @@ Files changed: `evals/run_evals.py`.
 Numeric `must_contain` needles are compared with `app.normalize.extract_numbers`, so `$1,000` satisfies `1000` and `18,995` satisfies the same amount with a different separator. Other needles stay as case-insensitive substrings.
 
 q4 is sent with the live q3 question and answer as history. q8 is sent with the live q1 question and answer as history. The canned history in `golden.yaml` is used only if that earlier case did not run.
+
+## Fix C: answer status
+
+Files changed: `app/generate.py`, `app/verify.py`, `app/main.py`, `tests/test_verify.py`.
+
+The model now returns `answer_status` of `full`, `partial`, or `not_listed` instead of `grounded`. `partial` answers the supported part and names what the pages do not list, such as Thailand for a treatment. `not_listed` says the asked fact is not listed, then adds related passage facts such as a 3-week program or a 3-month follow-up, with citations and the quote link.
+
+The chat falls back only when retrieval is below the rerank threshold or verification fails twice. A missing status, or an answer that still says it could not find the fact after retrieval, is a verification failure and is retried once.
+
+The verifier accepts integers 1 through 12 when that integer appears in any retrieved chunk, including as a number word such as "three". Other numbers still have to appear in a cited chunk or a used price record.
+
+`grounded` stays on the API response so the eval checker can treat `full`, `partial`, and `not_listed` as answered. Greeting and booking use `full`. Out of scope leaves the status empty.
