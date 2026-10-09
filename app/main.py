@@ -147,6 +147,7 @@ def _index_status() -> dict:
 @app.on_event("startup")
 def startup() -> None:
     db.init_db()
+    get_retriever().warm()
 
 
 @app.get("/health")
@@ -226,10 +227,17 @@ def chat(body: ChatRequest, request: Request) -> dict:
                 grounded = answer_status in {"full", "partial", "not_listed"}
                 cited = _cited_ids(draft)
             if routed.intent == "medical_advice":
-                answer = medical_advice() if answer == fallback() else f"{medical_advice()} {answer}"
-                grounded = True
-                if not answer_status:
+                advice = medical_advice()
+                rest = answer
+                while rest.startswith(advice):
+                    rest = rest[len(advice) :].strip()
+                if not rest or rest == fallback():
+                    answer = advice
+                    cited = set()
                     answer_status = "full"
+                else:
+                    answer = f"{advice} {rest}"
+                grounded = True
         except Exception:
             answer = friendly_error()
             grounded = False

@@ -181,3 +181,19 @@ When the rules do not match, one LLM call returns both the intent and the rewrit
 Files changed: `app/generate.py`.
 
 A comparison must give each listed side the clinic name as written, the city or country, the exact price as written on the page, and the page's estimate disclaimer when a passage says the prices are estimates only. A missing side stays `partial`.
+
+## Fix H: medical template
+
+Files changed: `app/main.py`.
+
+The medical-advice sentence is added once. If the model already started with it, the extra copy is removed. When the reply is only that sentence, or retrieval was below threshold, sources are omitted. Sources stay only when the reply also shares a fact from the pages.
+
+## Fix I: latency
+
+Files changed: `app/llm.py`, `app/router.py`, `app/rewrite.py`, `app/generate.py`, `app/retrieve.py`, `app/main.py`, `evals/run_evals.py`.
+
+Before this change, the diagnostic eval p50 was 20983 ms and p95 was 32605 ms. Rerank of 20 full passages was most of that time.
+
+Router and rewrite calls use `reasoning_effort` low and a 220 token cap (80 for the classifier-only path). Generation uses `reasoning_effort` medium and a 700 token cap. Startup warms the embedding model and the reranker. Rerank now scores the top 8 fused candidates, truncated to 500 characters. The eval waits 25 seconds between cases so a burst does not immediately exhaust the provider token window.
+
+If the model returns an answer and claims but omits `answer_status`, the status is inferred: `not_listed` when the answer says the fact is not listed, `partial` when that is a missing comparison side such as Thailand, otherwise `full`. That avoids a second paid call that discards a usable answer.

@@ -26,7 +26,7 @@ def rewrite(message: str, history: list[dict] | None = None) -> dict:
     history = history or []
     user = f"History:\n{_history_text(history)}\n\nLatest:\n{message}"
     try:
-        parsed = complete_json(SYSTEM, user)
+        parsed = complete_json(SYSTEM, user, reasoning_effort="low", max_tokens=220)
     except (LLMError, ValueError, TypeError):
         parsed = {}
     entities = parsed.get("entities") if isinstance(parsed.get("entities"), dict) else {}

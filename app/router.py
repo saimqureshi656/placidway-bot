@@ -149,6 +149,8 @@ def resolve(message: str, history: list[dict] | None = None) -> tuple[Route, dic
         parsed = complete_json(
             _COMBINED,
             f"History:\n{_history_text(history)}\n\nLatest:\n{message}",
+            reasoning_effort="low",
+            max_tokens=220,
         )
         rewritten = _from_llm(parsed, message)
     except (LLMError, ValueError, TypeError):
@@ -173,6 +175,8 @@ def route(message: str) -> Route:
             '{"intent":"greeting|booking|out_of_scope|medical_advice|lead|price|comparison|info"}. '
             "info means a question about the ITC clinic, its packages, or listed comparisons.",
             message,
+            reasoning_effort="low",
+            max_tokens=80,
         )
         intent = str(parsed.get("intent") or "info")
         if intent not in INTENTS:

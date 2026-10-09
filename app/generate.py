@@ -63,7 +63,14 @@ def _status(parsed: dict) -> str:
         return "full"
     if parsed.get("grounded") is False:
         return "not_listed"
-    return ""
+    answer = str(parsed.get("answer") or "").lower()
+    if not answer:
+        return ""
+    if any(phrase in answer for phrase in ("not listed", "isn't listed", "aren't listed", "not in the pages")):
+        if "thailand" in answer or "cannot be made" in answer or "can't be made" in answer:
+            return "partial"
+        return "not_listed"
+    return "full"
 
 
 def generate(
@@ -79,7 +86,7 @@ def generate(
     if extra_instruction:
         user += "\n\n" + extra_instruction
     try:
-        parsed = complete_json(system, user)
+        parsed = complete_json(system, user, reasoning_effort="medium", max_tokens=700)
     except (LLMError, ValueError, TypeError) as exc:
         draft = fallback_draft()
         draft["raw"] = {"error": type(exc).__name__, "detail": str(exc)[:500]}

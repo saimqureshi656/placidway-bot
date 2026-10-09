@@ -128,6 +128,7 @@ def main() -> None:
                 )
             else:
                 print(f"PASS {case['id']} {latency_ms:.0f}ms timings={debug.get('timings')}")
+            time.sleep(25)
     by_category: dict[str, list[bool]] = {}
     for row in rows:
         by_category.setdefault(row["category"], []).append(row["passed"])

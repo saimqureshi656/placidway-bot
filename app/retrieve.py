@@ -18,6 +18,8 @@ from ingest.prices import PRICES_PATH
 ROOT = Path(__file__).resolve().parents[1]
 RRF_K = 60
 CANDIDATES = 20
+RERANK_POOL = 8
+RERANK_CHARS = 500
 FLAG_WEIGHT = 0.25
 TREATMENT_BOOST = 0.08
 COUNTRY_BOOST = 0.04
@@ -101,7 +103,7 @@ class Retriever:
         ranked = sorted(fused, key=fused.get, reverse=True)[:CANDIDATES]
         retrieve_ms = int((time.perf_counter() - started) * 1000)
         rerank_started = time.perf_counter()
-        reranked = self._rerank(query, ranked)
+        reranked = self._rerank(query, ranked[:RERANK_POOL])
         rerank_ms = int((time.perf_counter() - rerank_started) * 1000)
         hits = reranked[: self.top_k]
         best = hits[0].score if hits else 0.0
@@ -166,7 +168,7 @@ class Retriever:
     def _rerank(self, query: str, indexes: list[int]) -> list[Hit]:
         if not indexes:
             return []
-        documents = [self.chunks[index]["text"] for index in indexes]
+        documents = [self.chunks[index]["text"][:RERANK_CHARS] for index in indexes]
         logits = [float(score) for score in self.reranker.rerank(query, documents)]
         hits: list[Hit] = []
         for chunk_index, logit in zip(indexes, logits):
@@ -192,6 +194,11 @@ class Retriever:
             )
         hits.sort(key=lambda hit: hit.score, reverse=True)
         return hits
+
+    def warm(self) -> None:
+        _embed(self.embed_model, ["warmup"], prefix=self.query_prefix)
+        if self.chunks:
+            self._rerank("warmup", [0])
 
     def lookup_prices(self, query: str, entities: dict | None = None) -> list[dict]:
         entities = entities or {}
