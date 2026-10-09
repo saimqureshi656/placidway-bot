@@ -31,3 +31,17 @@ Top 3 (sigmoid rerank score):
 
 Open questions:
 - Raw "recovery time" scores about 0.009, far below on-topic prices. Phase 8 may need the rewrite step, or a threshold under that score, so the 3-week FAQ is still retrieved.
+
+## Phase 4: LLM client, router, templates, rewrite
+
+Files changed: `app/config.py`, `app/llm.py`, `app/router.py`, `app/templates.py`, `app/rewrite.py`, `tests/test_router.py`.
+
+Decisions:
+- Groq is called with `GROQ_MODEL` from `.env`, temperature 0, 10 second timeout, one retry, then Cerebras if that key and model are set.
+- Router rules cover greeting, booking, medical advice, weather/dental, lead, comparison, and price. Unmatched text goes to the LLM JSON classifier, then `info` if that call fails.
+- Money mentions such as `$50` are stored on the route as `user_numbers` for the premise check.
+
+Tests: `pytest tests/test_router.py` — 5 passed (booking, weather, diabetes, $50 premise, ozone comparison).
+
+Open questions:
+- Cerebras is wired but `.env` has no Cerebras model, so fallback will not run until those values are set.
