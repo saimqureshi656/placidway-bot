@@ -154,8 +154,8 @@ def chat(body: ChatRequest, request: Request) -> dict:
             result = get_retriever().search(rewritten, intent=routed.intent, entities=entities)
             hits = [hit.__dict__ for hit in result.hits]
             if result.below_threshold or not hits:
-                answer = fallback()
-                grounded = False
+                answer = medical_advice() if routed.intent == "medical_advice" else fallback()
+                grounded = routed.intent == "medical_advice"
                 verifier_status = "below_threshold"
                 db.log_unanswered(body.message, "below_threshold")
             else:
@@ -170,12 +170,16 @@ def chat(body: ChatRequest, request: Request) -> dict:
                 )
                 answer = draft["answer"]
                 grounded = bool(draft.get("grounded"))
-                if routed.intent == "medical_advice":
-                    answer = medical_advice() + " " + answer
+            if routed.intent == "medical_advice":
+                answer = medical_advice() if answer == fallback() else f"{medical_advice()} {answer}"
+                grounded = True
         except Exception:
             answer = friendly_error()
             grounded = False
             verifier_status = "error"
+            if routed.intent == "medical_advice":
+                answer = medical_advice()
+                grounded = True
     show_disclaimer = False
     if routed.intent in {"price", "comparison", "info", "medical_advice"} and grounded:
         show_disclaimer = db.claim_disclaimer(body.session_id)

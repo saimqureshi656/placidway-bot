@@ -14,10 +14,29 @@ _CLINIC_PHRASE = re.compile(
 )
 
 
+_NUMBER_WORDS = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+}
+
+
 def source_numbers(chunks: list[dict], prices: list[dict]) -> set[int]:
     found: set[int] = set()
     for chunk in chunks:
-        found.update(extract_numbers(chunk.get("text") or ""))
+        text = chunk.get("text") or ""
+        found.update(extract_numbers(text))
+        lowered = text.lower()
+        for word, number in _NUMBER_WORDS.items():
+            if re.search(rf"\b{word}\b", lowered):
+                found.add(number)
     for record in prices:
         if record.get("price_low") is not None:
             found.add(int(record["price_low"]))
@@ -36,11 +55,22 @@ def verify(
 ) -> tuple[bool, str]:
     if not draft.get("grounded", False):
         return False, "grounded is false"
-    chunk_ids = {chunk["chunk_id"] for chunk in chunks}
+    ordered_ids = [chunk["chunk_id"] for chunk in chunks]
+    chunk_ids = set(ordered_ids)
+
+    def resolve(chunk_id: str) -> str:
+        if str(chunk_id).isdigit():
+            index = int(chunk_id) - 1
+            if 0 <= index < len(ordered_ids):
+                return ordered_ids[index]
+        return str(chunk_id)
+
     price_ids = {record["id"] for record in prices}
     cited: set[str] = set()
     for claim in draft.get("claims") or []:
-        for chunk_id in claim.get("chunk_ids") or []:
+        resolved = [resolve(chunk_id) for chunk_id in claim.get("chunk_ids") or []]
+        claim["chunk_ids"] = resolved
+        for chunk_id in resolved:
             if chunk_id not in chunk_ids:
                 return False, f"unknown chunk id {chunk_id}"
             cited.add(chunk_id)

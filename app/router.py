@@ -31,6 +31,10 @@ _MEDICAL = re.compile(
 _LEAD = re.compile(r"\b(contact me|call me|email me|free quote|be contacted)\b", re.IGNORECASE)
 _COMPARISON = re.compile(r"\b(cheaper|compare|comparison|versus|vs\.?)\b", re.IGNORECASE)
 _PRICE = re.compile(r"\b(how much|cost|price|priced|\$)\b", re.IGNORECASE)
+_INFO = re.compile(
+    r"\b(included|include|recovery|itinerary|follow-?up|address|what is|how does|when is)\b",
+    re.IGNORECASE,
+)
 _MONEY = re.compile(
     r"(?:\$\s?\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)?\s*(?:usd|dollars))\b",
     re.IGNORECASE,
@@ -65,6 +69,8 @@ def route_rules(message: str) -> Route | None:
         return Route("comparison", numbers)
     if _PRICE.search(text):
         return Route("price", numbers)
+    if _INFO.search(text):
+        return Route("info", numbers)
     if numbers:
         return Route("price", numbers)
     return None

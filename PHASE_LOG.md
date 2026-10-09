@@ -87,3 +87,30 @@ Decisions:
 Check: `GET /` returned 200 and the HTML includes the header "PlacidWay Assistant", the subtitle "Answers from PlacidWay pages only", the chat endpoint, disclaimer handling, and source chips. No in-app browser tool was available, so the buttons were not clicked in a real browser. The page is served by the same FastAPI app that already returned sources for the cost question.
 
 Open questions: none for this phase.
+
+## Phase 8: eval harness — stopped
+
+Files changed: `evals/golden.yaml`, `evals/run_evals.py`, `Makefile`, `app/config.py`, `app/generate.py`, `app/verify.py`, `app/router.py`, `app/main.py`, `test_results.md`.
+
+`RERANK_THRESHOLD` is **0.005**. Off-topic best scores were about 0.0001 (weather) and 0.0007 (dental). Ozone therapy in Turkey scored 0.76 and the adenocarcinoma cost question scored 0.99. A bare "recovery time" query scored about 0.009, so 0.005 is between the off-topic scores and that weak on-topic hit. It is also written as the default in `app/config.py`. `.env` was updated locally and is not committed.
+
+Three eval runs were made. The last one is `test_results.md`: **13/32** overall, **4/9** on the required ids (q1 cost, q5 booking, q6 weather, q7 diabetes passed).
+
+Still failing, and why a fourth prompt tweak was not started:
+- q2 ozone: the answer says Turkey $110 vs Mexico $1,000 and cites the comparison clinic table, but it never writes the digits `1000` or the name Fizikon.
+- q2b Thailand, q3 inclusions, q4 recovery: retrieval found the right 7903 sections, then the model set `grounded` false twice and the reply became the quote fallback.
+- q8 "$50": that number is a real comparison-component low (initial holistic consultation $50), so the premise check did not treat it as unknown. The correction quoted the $15,017 average instead of $18,995.
+
+Unit tests from earlier phases were re-run after the verifier edit: router, normalize, and verify — 14 passed.
+
+## Final summary
+
+Phases 3 through 7 are committed. Phase 8 built the eval harness and wrote `test_results.md`, then stopped because the eight required questions did not all pass after three runs. Phases 9, 10, and 11 were not started.
+
+What is in place:
+- Retrieval uses `BAAI/bge-small-en-v1.5` with the BGE query prefix, a treatment/country boost, downweighted testimonial and video-title chunks, and `BAAI/bge-reranker-base` scores after a sigmoid. Index: `data/index/v20261009171334`.
+- Groq is called with `GROQ_MODEL` from `.env` (not printed or committed).
+- `/health` is ok and `/api/chat` can answer the adenocarcinoma cost question with the 7903 source.
+- The chat page is `web/index.html`, served at `/`.
+
+What is not done: a passing required-question eval, phase 9 niceties, deployment, and the README/WRITEUP.

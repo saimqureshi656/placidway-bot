@@ -46,7 +46,7 @@ def get_settings() -> Settings:
         groq_model=env.get("GROQ_MODEL", ""),
         cerebras_api_key=env.get("CEREBRAS_API_KEY", ""),
         cerebras_model=env.get("CEREBRAS_MODEL", ""),
-        rerank_threshold=float(env.get("RERANK_THRESHOLD", "0.30")),
+        rerank_threshold=float(env.get("RERANK_THRESHOLD", "0.005")),
         top_k=int(env.get("TOP_K", "5")),
         admin_token=env.get("ADMIN_TOKEN", ""),
         quote_url=env.get("QUOTE_URL", "https://www.placidway.com/request-info"),
