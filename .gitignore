@@ -3,3 +3,7 @@ __pycache__/
 *.py[cod]
 .env
 data/
+
+PLAN.md
+PHASE_LOG.md
+.cursor/
