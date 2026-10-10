@@ -138,6 +138,22 @@ def test_success_rate_must_not_be_inferred():
     assert stated == ""
 
 
+def test_rectal_cancer_price_must_say_not_listed():
+    chunk = {"chunk_id": "package_7901:1:0", "text": "Anal cancer treatment starts from $18,995."}
+    missing = unlisted_fact_reason(
+        "How much does rectal cancer treatment cost?",
+        "Rectal cancer treatment starts from $18,995.",
+        [chunk],
+    )
+    assert missing == "rectal cancer is not listed"
+    stated = unlisted_fact_reason(
+        "How much does rectal cancer treatment cost?",
+        "Rectal cancer treatment is not listed.",
+        [chunk],
+    )
+    assert stated == ""
+
+
 def test_citation_marker_does_not_fail_number_check():
     ok, reason = verify(
         _draft("The out-patient program is $18,995 starting from [2]."),

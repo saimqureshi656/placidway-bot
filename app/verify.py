@@ -102,6 +102,8 @@ def unlisted_fact_reason(query: str, answer: str, chunks: list[dict]) -> str:
             return "side effect duration is not listed; do not infer it"
         if _window_has_duration(answer, "side effects") or _window_has_duration(answer, "side effect"):
             return "do not infer how long side effects last"
+    if re.search(r"\brectal\b", query, re.IGNORECASE) and "not listed" not in lowered:
+        return "rectal cancer is not listed"
     return ""
 
 

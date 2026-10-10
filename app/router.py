@@ -53,7 +53,11 @@ language is the language of the latest message.
 user_numbers lists money amounts the user stated, such as "$50".
 "What about recovery time?" after adenocarcinoma asks about recovery time after that adenocarcinoma program.
 "What about in Turkey?" keeps the prior treatment and changes the country.
-Arabic "كم تكلفة علاج سرطان الشرج في تيخوانا؟" means anal cancer treatment cost in Tijuana. standalone_query_en must contain the words "anal cancer", not "rectal cancer". entities.treatment must be anal cancer.
+Treatment glossary. Put the English name in standalone_query_en and entities.treatment. Do not rename one treatment as another.
+- adenocarcinoma | Spanish: adenocarcinoma | Arabic: أدينوكارسينوما
+- adrenal cancer | Spanish: cáncer adrenal, cáncer de suprarrenal | Arabic: سرطان الغدة الكظرية
+- anal cancer | Spanish: cáncer anal | Arabic: سرطان الشرج
+سرطان الشرج is anal cancer, not rectal cancer. Rectal cancer (Spanish cáncer rectal, Arabic سرطان المستقيم) is a different treatment. Leave "rectal cancer" unchanged.
 """
 
 _SAFETY = ("medical_advice", "booking", "out_of_scope")
@@ -176,15 +180,6 @@ def resolve(message: str, history: list[dict] | None = None) -> tuple[Route, dic
     )
     rewritten = _from_llm(parsed, message)
     rewritten["is_followup"] = bool(rewritten["is_followup"] or is_followup(message, history))
-    if "الشرج" in message:
-        standalone = rewritten["standalone_query_en"]
-        standalone = re.sub(r"\brectal cancer\b", "anal cancer", standalone, flags=re.IGNORECASE)
-        if "anal cancer" not in standalone.lower():
-            standalone = "How much does anal cancer treatment cost in Tijuana?"
-        rewritten["standalone_query_en"] = standalone
-        treatment = rewritten["entities"].get("treatment") or ""
-        if "anal" not in treatment.lower():
-            rewritten["entities"]["treatment"] = "anal cancer"
     ruled = route_rules(message)
     intent = choose_intent(ruled.intent if ruled else None, rewritten["intent"], message)
     method = "agree" if ruled and ruled.intent == intent else "llm"

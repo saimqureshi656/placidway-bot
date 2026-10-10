@@ -1,4 +1,4 @@
-# 32 cases. The first eight match the required test_results.md questions.
+# 33 cases. The first eight match the required test_results.md questions.
 - id: q1-cost
   category: required
   question: How much does adenocarcinoma cancer treatment cost in Mexico?
@@ -103,6 +103,15 @@
     must_contain: ["18,995", "30,000"]
     must_not_contain: []
     must_cite: ["package/7901"]
+- id: rectal-cost
+  category: price
+  question: How much does rectal cancer treatment cost?
+  expect:
+    intent: price
+    grounded: true
+    must_contain: ["not listed"]
+    must_not_contain: []
+    must_cite: []
 - id: inpatient-difference
   category: price
   question: What is the difference between the in-patient and out-patient adenocarcinoma programs?

@@ -367,3 +367,13 @@ If an answer quotes a price whose record qualifier is starting from, approximate
 The stored Arabic anal rewrites were "How much does rectal cancer treatment cost in Tijuana?" with intent price. They did not contain "anal cancer". The rewrite prompt now requires those words, and a الشرج message is corrected to "anal cancer" if the model still says rectal. Each rewrite logs `standalone_query_en` and entities.
 
 The process already bound to port 8000 was not restarted, so these changes are not loaded yet. The required and full evals were not run against this code. Unit tests: `pytest tests/test_verify.py` — 15 passed.
+
+## Treatment glossary
+
+Files changed: `app/router.py`, `app/generate.py`, `app/verify.py`, `evals/golden.yaml`, `tests/test_verify.py`.
+
+The Arabic rewrite no longer rewrites rectal cancer to anal cancer in code. The rewrite prompt now has a glossary for adenocarcinoma, adrenal cancer, and anal cancer in English, Spanish, and Arabic. سرطان الشرج stays anal cancer. Rectal cancer stays rectal cancer.
+
+A rectal-cancer price question must say it is not listed. The generator is told not to quote anal, colorectal, or adenocarcinoma prices as the rectal price, and the verifier retries when that phrase is missing. New eval case `rectal-cost`: "How much does rectal cancer treatment cost?" must contain "not listed".
+
+These files are not loaded in the process on port 8000. The required and full evals were not run. Unit tests: `pytest tests/test_verify.py` — 16 passed.
