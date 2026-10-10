@@ -345,7 +345,7 @@ def chat(body: ChatRequest, request: Request) -> dict:
             clinic_name = _clinic(rewritten, entities, body.history)
             correction = None
             if routed.user_numbers:
-                pool = result.prices or [
+                pool = [
                     record for record in get_retriever().price_records if record.get("answerable", True)
                 ]
                 correction = premise_correction(routed.user_numbers, pool, topic, clinic_name)
@@ -399,12 +399,13 @@ def chat(body: ChatRequest, request: Request) -> dict:
             answer_status = ""
             verifier_status = "error"
             verifier_reason = str(exc)[:300]
-        except Exception:
+        except Exception as exc:
+            logger.exception("chat failed")
             answer = friendly_error()
             grounded = False
             answer_status = ""
             verifier_status = "error"
-            verifier_reason = "error"
+            verifier_reason = f"{type(exc).__name__}: {exc}"[:300]
     show_disclaimer = False
     if routed.intent in {"price", "comparison", "info", "medical_advice"} and grounded:
         show_disclaimer = db.claim_disclaimer(body.session_id)

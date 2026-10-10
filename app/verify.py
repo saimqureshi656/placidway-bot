@@ -122,21 +122,24 @@ def verify(
     ordered_ids = [chunk["chunk_id"] for chunk in chunks]
     chunk_ids = set(ordered_ids)
 
-    def resolve(chunk_id: str) -> str:
-        if str(chunk_id).isdigit():
-            index = int(chunk_id) - 1
+    def resolve(chunk_id: str) -> str | None:
+        token = str(chunk_id).strip().strip("[]")
+        if token.isdigit():
+            index = int(token) - 1
             if 0 <= index < len(ordered_ids):
                 return ordered_ids[index]
-        return str(chunk_id)
+        return None
 
     cited: set[str] = set()
     for claim in draft.get("claims") or []:
-        resolved = [resolve(chunk_id) for chunk_id in claim.get("chunk_ids") or []]
+        resolved: list[str] = []
+        for chunk_id in claim.get("chunk_ids") or []:
+            mapped = resolve(chunk_id)
+            if mapped is None:
+                return False, f"invalid passage number {chunk_id}"
+            resolved.append(mapped)
+            cited.add(mapped)
         claim["chunk_ids"] = resolved
-        for chunk_id in resolved:
-            if chunk_id not in chunk_ids:
-                return False, f"unknown chunk id {chunk_id}"
-            cited.add(chunk_id)
     if status == "not_listed" and not cited:
         return False, "not_listed answer must cite chunk ids"
     allowed_numbers = source_numbers(chunks, prices)
@@ -185,7 +188,7 @@ def add_related_facts(answer: str, chunks: list[dict]) -> str:
     if any(phrase in blob for phrase in ("3 month", "3 months", "three month", "three months")) and "month" not in lowered:
         text = f"{text} A follow-up consultation is listed after 3 months."
     if quote_url() not in text:
-        text = f"{text} {quote_url()}"
+        text = f"{text} Request a free quote: {quote_url()}"
     return text.strip()
 
 
@@ -201,13 +204,12 @@ def _starting_record(prices: list[dict]) -> dict | None:
 
 
 def _no_topic(user_numbers: list[str], prices: list[dict]) -> tuple[str, str]:
-    claim = user_numbers[0].strip()
     record = _starting_record(prices)
     if record is None:
-        return f"I can't confirm that. {claim} does not match any listed ITC package price.", ""
+        return "I can't confirm that. That amount does not match any listed ITC package price.", ""
     source = record.get("url") or ""
     sentence = (
-        f"I can't confirm that. {claim} does not match any listed ITC package price. "
+        f"I can't confirm that. That amount does not match any listed ITC package price. "
         f"The pages list {format_price(record)}."
     )
     if source:

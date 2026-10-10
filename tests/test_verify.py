@@ -21,7 +21,7 @@ CLINICS = ["ITC Immunity Therapy Center"]
 def _draft(answer: str, grounded: bool = True, price_ids: list[str] | None = None) -> dict:
     return {
         "answer": answer,
-        "claims": [{"text": answer, "chunk_ids": ["package_7903:4:0"]}],
+        "claims": [{"text": answer, "chunk_ids": ["1"]}],
         "used_price_ids": price_ids if price_ids is not None else ["p_7903_outpatient"],
         "answer_status": "full" if grounded else "",
     }
@@ -136,6 +136,14 @@ def test_success_rate_must_not_be_inferred():
         [chunk],
     )
     assert stated == ""
+
+
+def test_invalid_passage_number_is_rejected():
+    draft = _draft("The out-patient program is $18,995 for 3 weeks.")
+    draft["claims"] = [{"text": "price", "chunk_ids": ["9"]}]
+    ok, reason = verify(draft, [CHUNK], [PRICE], clinic_names=CLINICS)
+    assert ok is False
+    assert "invalid passage number" in reason
 
 
 def test_unknown_price_id_does_not_fail():

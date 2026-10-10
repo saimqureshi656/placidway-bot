@@ -17,8 +17,8 @@ def greeting() -> str:
 
 def booking() -> str:
     return (
-        "I can't book appointments. Request a free quote and the PlacidWay team will help schedule: "
-        f"{quote_url()}"
+        "I can't book appointments. "
+        f"Request a free quote: {quote_url()}"
     )
 
 
@@ -26,7 +26,7 @@ def out_of_scope() -> str:
     return (
         "I can only answer from the ITC PlacidWay pages I have, such as package costs, "
         "what those programs include, and listed price comparisons. "
-        f"For anything else, request a free quote: {quote_url()}"
+        f"Request a free quote: {quote_url()}"
     )
 
 
@@ -40,7 +40,7 @@ def medical_advice() -> str:
 def fallback() -> str:
     return (
         "I couldn't find that in the PlacidWay pages I have. "
-        f"For accurate details, request a free quote: {quote_url()}"
+        f"Request a free quote: {quote_url()}"
     )
 
 
@@ -53,15 +53,15 @@ def price_not_listed(subject: str) -> str:
 
 def unavailable() -> str:
     return (
-        "I'm temporarily unavailable. Please try again in a moment, or request a free quote: "
-        f"{quote_url()}"
+        "I'm temporarily unavailable. Please try again in a moment. "
+        f"Request a free quote: {quote_url()}"
     )
 
 
 def friendly_error() -> str:
     return (
-        "I'm having trouble right now, please try again or request a free quote: "
-        f"{quote_url()}"
+        "I'm having trouble right now, please try again. "
+        f"Request a free quote: {quote_url()}"
     )
 
 

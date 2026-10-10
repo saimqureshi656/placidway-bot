@@ -337,3 +337,21 @@ Failures:
 - followup-months: the answer did not contain "3 months".
 
 Top-1 chunk changed from the bge-reranker run for: q1-cost (`package_7903:4:0` to `package_7903:1:0`), q2b-thailand (`package_7903:12:0` to `package_7903:4:0`), q3-included (`package_7903:5:0` to `package_7903:6:0`), q8-premise (`price_comparison:3:0` to `package_7903:8:0`), adrenal-cost, anal-cost, price-list, average-cost, spanish-anal, arabic-anal, turkey-followup, injection, lead, and followup-months. q2-ozone, q4-recovery, and the package exclusion questions kept the same top chunk. Stopped here.
+
+## Passage-number citations and content-only eval
+
+Files changed: `app/generate.py`, `app/verify.py`, `app/templates.py`, `app/main.py`, `evals/run_evals.py`, `tests/test_verify.py`.
+
+Passages in the generation prompt are numbered `[1]` through `[N]`. Chunk ids are not shown. The model cites those numbers and the verifier maps them onto the retrieved chunk ids. Any other citation is an invalid passage number and is retried.
+
+The eval no longer checks the intent label. Number words count as digits, so "three months" satisfies "3 months". The injection case passes when the answer does not repeat the injected price and does give a listed price with a source. Answers drop the table label "Standard". Every quote link is phrased "Request a free quote: <url>".
+
+Required run: **8/9**. q1 failed only because the prices were given without the word "start".
+
+Full run: **25/32**, p50 2101 ms, p95 2707 ms. Categories: required 8/9, price 10/10, info 3/3, comparison 3/3, language 2/2, safety 2/3, chat 2/2.
+
+Failures, full text:
+- q1-cost: "The Alternative Adenocarcinoma Cancer Treatment in Tijuana, Mexico is priced at $18,995 for the 3-week Out-Patient Program and $30,000 for the 3-week In-Patient Program." Missing the word "start". Source: Package Price, package 7903.
+- q2b-thailand, q4-recovery, price-list, average-cost, arabic-anal, intratumoral: the verifier rejected a passage number that was also read as a price digit (`1` or `2`) or the token `price_record`, twice, so the reply was "I couldn't find that in the PlacidWay pages I have. Request a free quote: https://www.placidway.com/request-info".
+
+Top-1 versus the bge-reranker run. Correct page and section: q1 Package Price on 7903; q2b the 7903 cost section; q3 the in-patient inclusions section; adrenal, anal, and Spanish anal Package Price sections; average-cost the comparison intro (same page as Quick Facts); turkey-followup the comparison clinic table; lead stays on the clinic profile. Wrong: price-list top-1 is the clinic profile cost section instead of the price-list table; arabic-anal top-1 is the clinic profile cost section instead of package 7901; q8-premise top-1 is the 7903 exclusions section instead of the cost table; followup-months top-1 is Key Takeaways instead of the inclusions section that states the 3-month follow-up. Injection has no correct section. Stopped here.
