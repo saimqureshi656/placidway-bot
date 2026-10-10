@@ -163,6 +163,7 @@ def main() -> None:
                     "latency_ms": latency_ms,
                     "calls": _format_calls(payload),
                     "timings": (payload.get("debug") or {}).get("timings") or {},
+                    "retries": (payload.get("debug") or {}).get("retries") or [],
                 }
             )
             debug = payload.get("debug") or {}
@@ -170,12 +171,12 @@ def main() -> None:
                 print(
                     f"FAIL {case['id']} {latency_ms:.0f}ms {reasons} "
                     f"status={debug.get('verifier_status')} reason={debug.get('verifier_reason')} "
-                    f"timings={debug.get('timings')}"
+                    f"timings={debug.get('timings')} retries={debug.get('retries')}"
                 )
             else:
                 print(
                     f"PASS {case['id']} {latency_ms:.0f}ms timings={debug.get('timings')} "
-                    f"calls={_format_calls(payload)}"
+                    f"calls={_format_calls(payload)} retries={debug.get('retries')}"
                 )
             if index < len(cases) - 1:
                 time.sleep(gap_seconds)
@@ -209,6 +210,8 @@ def main() -> None:
         if row["reasons"]:
             lines.append("Reasons: " + "; ".join(row["reasons"]))
         lines.append(f"Models: {row.get('calls') or 'none'}")
+        retries = row.get("retries") or []
+        lines.append(f"Retries: {len(retries)}" + ("; " + "; ".join(retries) if retries else ""))
         timings = row.get("timings") or {}
         if timings:
             lines.append("Stage ms: " + ", ".join(f"{name}={value}" for name, value in timings.items()))

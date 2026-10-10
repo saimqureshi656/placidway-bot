@@ -100,12 +100,21 @@ def resolve_rerank_model(requested: str) -> tuple[str, str]:
 _EMBEDDERS: dict[str, object] = {}
 
 
+def configure_threads() -> int:
+    count = os.cpu_count() or 1
+    value = str(count)
+    os.environ["OMP_NUM_THREADS"] = value
+    os.environ["ORT_INTRA_OP_NUM_THREADS"] = value
+    os.environ["ORT_INTER_OP_NUM_THREADS"] = "1"
+    return count
+
+
 def _embed(model_name: str, texts: list[str], *, prefix: str) -> np.ndarray:
     from fastembed import TextEmbedding
 
     model = _EMBEDDERS.get(model_name)
     if model is None:
-        model = TextEmbedding(model_name=model_name)
+        model = TextEmbedding(model_name=model_name, threads=configure_threads())
         _EMBEDDERS[model_name] = model
     payload = [f"{prefix}{text}" if prefix else text for text in texts]
     vectors = np.vstack(list(model.embed(payload))).astype(np.float32)
@@ -117,7 +126,7 @@ def _embed(model_name: str, texts: list[str], *, prefix: str) -> np.ndarray:
 def load_reranker(model_name: str):
     from fastembed.rerank.cross_encoder import TextCrossEncoder
 
-    return TextCrossEncoder(model_name=model_name)
+    return TextCrossEncoder(model_name=model_name, threads=configure_threads())
 
 
 def build_index() -> Path:

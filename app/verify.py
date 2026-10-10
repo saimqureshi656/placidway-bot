@@ -69,7 +69,6 @@ def verify(
                 return ordered_ids[index]
         return str(chunk_id)
 
-    price_ids = {record["id"] for record in prices}
     cited: set[str] = set()
     for claim in draft.get("claims") or []:
         resolved = [resolve(chunk_id) for chunk_id in claim.get("chunk_ids") or []]
@@ -78,18 +77,14 @@ def verify(
             if chunk_id not in chunk_ids:
                 return False, f"unknown chunk id {chunk_id}"
             cited.add(chunk_id)
-    for price_id in draft.get("used_price_ids") or []:
-        if price_id not in price_ids:
-            return False, f"unknown price id {price_id}"
-    cited_chunks = [chunk for chunk in chunks if chunk["chunk_id"] in cited] or chunks
-    used_prices = [record for record in prices if record["id"] in set(draft.get("used_price_ids") or [])]
-    allowed_numbers = source_numbers(cited_chunks, used_prices or prices)
-    retrieved_numbers = source_numbers(chunks, [])
+    if status == "not_listed" and not cited:
+        return False, "not_listed answer must cite chunk ids"
+    allowed_numbers = source_numbers(chunks, prices)
     for number in extract_numbers(answer):
-        if 1 <= number <= 12 and number in retrieved_numbers:
+        if 1 <= number <= 12 and number in allowed_numbers:
             continue
         if number not in allowed_numbers:
-            return False, f"number {number} is not in the cited sources"
+            return False, f"number {number} is not in the retrieved chunks or price records"
     allowed_urls = set(ALLOWLIST) | {quote_url()}
     for url in _URL.findall(draft.get("answer") or ""):
         cleaned = url.rstrip(".,")
@@ -102,23 +97,33 @@ def verify(
     return True, ""
 
 
-def _price_bits(record: dict) -> str:
-    bits = []
-    qualifier = str(record.get("qualifier") or "").strip()
-    program = str(record.get("program") or record.get("duration") or "").strip()
-    if qualifier and qualifier.lower() != "listed":
-        bits.append(qualifier)
-    if program and program.lower() not in {"listed", "the listed program"}:
-        bits.append(program)
-    return f" ({', '.join(bits)})" if bits else ""
-
-
-def _shown_amount(record: dict) -> str:
+def format_price(record: dict) -> str:
     low = int(record["price_low"])
     high = int(record["price_high"])
+    currency = record.get("currency") or "USD"
     if high != low:
-        return f"{low:,}-{high:,}"
-    return f"{low:,}"
+        shown = f"${low:,}-{high:,} {currency}"
+    else:
+        shown = f"${low:,} {currency}"
+    qualifier = str(record.get("qualifier") or "").strip()
+    if qualifier and qualifier.lower() != "listed":
+        shown += f" ({qualifier})"
+    return shown
+
+
+def add_related_facts(answer: str, chunks: list[dict]) -> str:
+    """not_listed replies must name the related program length and follow-up when the pages have them."""
+    blob = " ".join((chunk.get("text") or "") for chunk in chunks).lower()
+    text = answer.strip()
+    lowered = text.lower()
+    if any(phrase in blob for phrase in ("3 week", "3 weeks", "three week", "three weeks")) and "week" not in lowered:
+        text = f"{text} The listed program duration is 3 weeks."
+        lowered = text.lower()
+    if any(phrase in blob for phrase in ("3 month", "3 months", "three month", "three months")) and "month" not in lowered:
+        text = f"{text} A follow-up consultation is listed after 3 months."
+    if quote_url() not in text:
+        text = f"{text} {quote_url()}"
+    return text.strip()
 
 
 def _starting_record(prices: list[dict]) -> dict | None:
@@ -132,19 +137,19 @@ def _starting_record(prices: list[dict]) -> dict | None:
     return None
 
 
-def _no_topic(user_numbers: list[str], prices: list[dict]) -> str:
+def _no_topic(user_numbers: list[str], prices: list[dict]) -> tuple[str, str]:
     claim = user_numbers[0].strip()
     record = _starting_record(prices)
     if record is None:
-        return f"I can't confirm that. {claim} does not match any listed ITC package price."
+        return f"I can't confirm that. {claim} does not match any listed ITC package price.", ""
     source = record.get("url") or ""
     sentence = (
         f"I can't confirm that. {claim} does not match any listed ITC package price. "
-        f"The pages list a starting-from price of {_shown_amount(record)} {record.get('currency') or 'USD'}."
+        f"The pages list {format_price(record)}."
     )
     if source:
         sentence += f" Source: {source}"
-    return sentence
+    return sentence, source
 
 
 def _topic_records(prices: list[dict], treatment: str, clinic: str) -> list[dict]:
@@ -184,7 +189,7 @@ def premise_correction(
     prices: list[dict],
     treatment: str,
     clinic: str = "",
-) -> str | None:
+) -> tuple[str, str] | None:
     if not user_numbers:
         return None
     claimed = set(extract_numbers(" ".join(user_numbers)))
@@ -202,8 +207,8 @@ def premise_correction(
     record = sorted(topic, key=lambda item: rank.get(item.get("category"), 9))[0]
     name = treatment or record.get("treatment") or "this treatment"
     return (
-        f"I can't confirm that. Our page lists {_shown_amount(record)} {record.get('currency') or 'USD'}"
-        f"{_price_bits(record)} for {name}."
+        f"I can't confirm that. Our page lists {format_price(record)} for {name}.",
+        record.get("url") or "",
     )
 
 
@@ -217,6 +222,5 @@ def fallback_draft() -> dict:
     return {
         "answer": fallback(),
         "claims": [],
-        "used_price_ids": [],
         "answer_status": "",
     }

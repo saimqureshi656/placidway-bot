@@ -8,14 +8,14 @@ import re
 import time
 from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app import db
 from app.config import ROOT, get_settings
 from app.diagnostics import log_turn
 from app.generate import generate_checked
-from app.llm import LLMError, llm_calls, start_llm_log
+from app.llm import LLMError, llm_calls, start_llm_log, warm_http
 from app.retrieve import get_retriever
 from app.router import resolve
 from app.security import enforce_admin, enforce_rate_limit
@@ -84,7 +84,7 @@ def _cited_ids(draft: dict) -> set[str]:
     return cited
 
 
-def _sources(hits: list[dict], cited: set[str]) -> list[dict]:
+def _sources(hits: list[dict], cited: set[str], premise_url: str = "") -> list[dict]:
     seen: set[str] = set()
     sources = []
     for hit in hits:
@@ -98,6 +98,15 @@ def _sources(hits: list[dict], cited: set[str]) -> list[dict]:
                 "title": hit.get("section") or "",
                 "section": hit.get("section") or "",
                 "snippet": snippet,
+            }
+        )
+    if premise_url and premise_url not in seen:
+        sources.append(
+            {
+                "url": premise_url,
+                "title": "Listed price",
+                "section": "Listed price",
+                "snippet": "",
             }
         )
     return sources
@@ -156,7 +165,11 @@ def _index_status() -> dict:
 @app.on_event("startup")
 def startup() -> None:
     db.init_db()
+    from ingest.build_index import configure_threads
+
+    configure_threads()
     get_retriever().warm()
+    warm_http()
 
 
 @app.get("/health")
@@ -190,6 +203,7 @@ def _finish(
     show_disclaimer: bool,
     raw_llm,
     cache: bool = False,
+    retries: list[str] | None = None,
 ) -> dict:
     latency_ms = int((time.perf_counter() - started) * 1000)
     timings["total_ms"] = latency_ms
@@ -239,6 +253,7 @@ def _finish(
             "verifier_status": verifier_status,
             "llm_calls": calls,
             "cache": cache,
+            "retries": retries or [],
         },
     }
     return payload
@@ -307,6 +322,8 @@ def chat(body: ChatRequest, request: Request) -> dict:
     raw_llm = None
     verifier_reason = ""
     cited: set[str] = set()
+    premise_url = ""
+    retries: list[str] = []
     if routed.intent == "greeting":
         answer = greeting()
     elif routed.intent == "booking":
@@ -341,6 +358,8 @@ def chat(body: ChatRequest, request: Request) -> dict:
                     clinic_names=_clinic_names(),
                 )
                 timings.update(stage_timings)
+                retries = list(stage_timings.get("retries") or [])
+                premise_url = str(draft.get("premise_url") or "")
                 raw_llm = [item.get("raw") for item in attempts]
                 verifier_reason = attempts[-1].get("verifier_reason") or ""
                 answer = draft["answer"]
@@ -377,7 +396,7 @@ def chat(body: ChatRequest, request: Request) -> dict:
     payload = _finish(
         body=body,
         answer=answer,
-        sources=_sources(hits, cited),
+        sources=_sources(hits, cited, premise_url),
         intent=routed.intent,
         answer_status=answer_status,
         grounded=grounded,
@@ -390,10 +409,28 @@ def chat(body: ChatRequest, request: Request) -> dict:
         started=started,
         show_disclaimer=show_disclaimer,
         raw_llm=raw_llm,
+        retries=retries,
     )
     if verifier_status in {"pass", "template", "premise"}:
         db.save_cached_answer(key, payload)
     return payload
+
+
+def _sse(payload: dict) -> str:
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+@app.post("/api/chat/stream")
+def chat_stream(body: ChatRequest, request: Request):
+    def events():
+        yield _sse({"type": "status", "text": "Checking sources..."})
+        yield _sse({"type": "answer", "payload": chat(body, request)})
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/api/lead")

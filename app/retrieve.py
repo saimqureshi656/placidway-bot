@@ -19,7 +19,7 @@ from ingest.prices import PRICES_PATH
 ROOT = Path(__file__).resolve().parents[1]
 RRF_K = 60
 CANDIDATES = 20
-RERANK_POOL = 8
+RERANK_POOL = 10
 RERANK_CHARS = 650
 FLAG_WEIGHT = 0.25
 TREATMENT_BOOST = 0.08

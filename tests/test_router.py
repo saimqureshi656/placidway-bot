@@ -42,11 +42,12 @@ def test_cure_is_medical_advice():
 
 
 def test_safety_intent_wins_a_disagreement():
-    assert choose_intent("price", "medical_advice") == "medical_advice"
-    assert choose_intent("info", "booking") == "booking"
-    assert choose_intent("price", "out_of_scope") == "out_of_scope"
+    assert choose_intent("price", "medical_advice", "Will this cure my cancer?") == "medical_advice"
+    assert choose_intent("info", "medical_advice", "And what about recovery time?") == "info"
+    assert choose_intent("info", "booking") == "info"
+    assert choose_intent(None, "out_of_scope") == "out_of_scope"
     assert choose_intent("medical_advice", "booking") == "medical_advice"
-    assert choose_intent("price", "info") == "info"
+    assert choose_intent("price", "info") == "price"
 
 
 def test_gen_bucket_skips_when_empty():

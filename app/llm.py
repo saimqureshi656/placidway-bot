@@ -17,7 +17,7 @@ GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
 GROQ_GEN_MODEL = "openai/gpt-oss-120b"
 GROQ_ROUTER_MODEL = "openai/gpt-oss-20b"
-GEN_MAX_TOKENS = 700
+GEN_MAX_TOKENS = 2000
 ROUTER_MAX_TOKENS = 400
 _THINK = re.compile(r"<think>.*?</think>", re.DOTALL)
 
@@ -51,6 +51,27 @@ class TokenBucket:
 
 
 GEN_BUCKET = TokenBucket()
+_HTTP: httpx.Client | None = None
+
+
+def get_http() -> httpx.Client:
+    global _HTTP
+    if _HTTP is None:
+        _HTTP = httpx.Client(
+            timeout=httpx.Timeout(25.0, connect=5.0),
+            limits=httpx.Limits(max_keepalive_connections=8, max_connections=16, keepalive_expiry=120.0),
+        )
+    return _HTTP
+
+
+def warm_http() -> None:
+    settings = get_settings()
+    client = get_http()
+    headers = {"Authorization": f"Bearer {settings.cerebras_api_key}"} if settings.cerebras_api_key else {}
+    try:
+        client.get("https://api.cerebras.ai/v1/models", headers=headers)
+    except httpx.HTTPError:
+        return
 
 
 def start_llm_log() -> None:
@@ -97,7 +118,7 @@ def _post(
     }
     if reasoning_effort:
         payload["reasoning_effort"] = reasoning_effort
-    response = httpx.post(
+    response = get_http().post(
         url,
         headers={"Authorization": f"Bearer {api_key}"},
         json=payload,

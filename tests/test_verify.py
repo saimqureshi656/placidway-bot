@@ -81,15 +81,24 @@ def test_small_integer_from_any_retrieved_chunk():
     assert reason == ""
 
 
+def test_unknown_price_id_does_not_fail():
+    draft = _draft("The out-patient program is $18,995 for 3 weeks.")
+    draft["used_price_ids"] = ["not-a-real-id"]
+    ok, reason = verify(draft, [CHUNK], [PRICE], clinic_names=CLINICS)
+    assert ok is True
+    assert reason == ""
+
+
 def test_premise_rejects_fifty_dollars():
-    correction = premise_correction(
+    result = premise_correction(
         ["$50"],
         [PRICE],
         "Alternative Adenocarcinoma Cancer Treatment",
     )
-    assert correction is not None
+    assert result is not None
+    correction, _url = result
     assert correction.startswith("I can't confirm that.")
-    assert "18,995" in correction
+    assert "$18,995 USD (starting from)" in correction
     assert "listed program" not in correction
     assert premise_ok("Yes, it costs $50.", correction) is False
     assert premise_ok(correction + " The page lists the out-patient program.", correction) is True
@@ -109,9 +118,8 @@ def test_premise_without_topic_uses_starting_price():
         "url": "https://www.placidway.com/profile/5/Alternative-Cancer-Treatment-by-ITC-Immunity-Therapy-Center",
         "answerable": True,
     }
-    correction = premise_correction(["$50"], [PRICE, starting], "", "")
-    assert correction is not None
+    correction, url = premise_correction(["$50"], [PRICE, starting], "", "")
     assert "does not match any listed ITC package price" in correction
-    assert "18,995" in correction
-    assert "profile/5" in correction
+    assert "$18,995 USD (starting from)" in correction
+    assert "profile/5" in url
     assert "the listed program" not in correction

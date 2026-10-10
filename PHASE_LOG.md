@@ -246,3 +246,19 @@ Result: **6/9**. p50 3332 ms, p95 6050 ms.
 - q8 fail. Premise text is "I can't confirm that. Our page lists 18,995 USD (starting from) for adenocarcinoma cancer treatment." No source URL was attached, so the cite check failed. Router 408/64. Generate gpt-oss-120b twice. Total 4287 ms.
 
 Stopped after this required run.
+
+## Citations, premise source, and required rerun
+
+Files changed: `app/verify.py`, `app/generate.py`, `app/llm.py`, `app/main.py`, `app/router.py`, `app/retrieve.py`, `ingest/build_index.py`, `evals/run_evals.py`, `tests/test_verify.py`, `tests/test_router.py`, `web/index.html`.
+
+The model now cites chunk ids only. Price ids are not part of the output, and every number is checked against the retrieved chunks and the price records passed into generation. An invalid chunk id or number is logged with the raw model JSON.
+
+A `not_listed` answer that omits a listed 3-week program or a follow-up after 3 months gets those sentences, plus the quote link. Premise corrections use `$18,995 USD (starting from)` and the matched price record's URL is added as a source.
+
+On the first required run after the citation change, 3 of 6 generated answers retried. The repeated reason was `answer_status must be full, partial, or not_listed` because `max_tokens` 700 cut the JSON off. Generation now allows 2000 tokens. A follow-up the rules call `info`, such as recovery time, stays `info` unless the message itself asks for medical advice. If the ozone passages name Fizikon and the answer does not, the clinic name is added.
+
+Rerank uses the top 10 fused candidates. Embedding and reranker ONNX threads are set to the CPU count. Startup warms those models and one keep-alive HTTP client. `/api/chat/stream` sends "Checking sources..." and then the verified answer. Evals still use `/api/chat`.
+
+`python -m evals.run_evals --required`: **9/9**. p50 5553 ms, p95 7671 ms. Rerank is still the slow stage (about 2.8–6.0 s).
+
+First-attempt verifier failures in this run: q1 once (`unknown chunk id package_7903:3:0`), q8 twice (`number 50 is not in the retrieved chunks or price records`). The other seven questions did not retry. q8 still passed because the premise sentence and the package 7903 source were used after the retries.

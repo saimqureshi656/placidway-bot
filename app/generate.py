@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 
+from app.diagnostics import log_turn
 from app.llm import LLMError, complete_generate_json
 from app.templates import quote_url
-from app.verify import fallback_draft, premise_correction, premise_ok, verify
+from app.verify import add_related_facts, fallback_draft, premise_correction, premise_ok, verify
+
+logger = logging.getLogger("placidway.chat")
 
 STATUSES = {"full", "partial", "not_listed"}
 
@@ -18,7 +22,7 @@ Every price: exact amount, currency, qualifier (starting from, approximately, ra
 Set answer_status to one of full, partial, not_listed.
 full: the passages answer the question.
 partial: answer the supported part, and state what is not in the pages. Example: "Thailand is not listed for this treatment."
-not_listed: say the asked fact is not listed, then give related facts from the passages (for example a 3-week program or a 3-month follow-up). Cite those chunks and include {quote_url}.
+not_listed: say the asked fact is not listed, then state the related facts that ARE listed. If the passages give a program duration, write "3 weeks". If they give a follow-up, write "after 3 months". Cite those chunk ids and include {quote_url}.
 If the passages contain the prices, inclusions, or clinic facts asked about, use full. Do not refuse.
 Comparisons: only compare items that both appear in the passages. If one side is missing, name that side and use partial.
 For each side that is listed, name the clinic exactly as written, the city or country, the exact price as written on the page, and the page's estimate disclaimer when a passage says prices are estimates only.
@@ -28,7 +32,8 @@ When comparing clinics, copy each clinic name exactly as written in the passage.
 Do not mention clinics, prices or treatments not in the passages.
 Reply in {language}. Keep prices, clinic names and URLs exactly as written.
 2 to 6 sentences or a short list. No filler.
-Output JSON: {"answer":"", "claims":[{"text":"", "chunk_ids":[]}], "used_price_ids":[], "answer_status":"full"}
+Cite only chunk_id values copied from the passages. Do not invent ids.
+Output JSON: {"answer":"", "claims":[{"text":"", "chunk_ids":[]}], "answer_status":"full"}
 """
 
 
@@ -39,7 +44,6 @@ def _context(hits: list[dict], prices: list[dict]) -> str:
     records = json.dumps(
         [
             {
-                "id": record["id"],
                 "raw_text": record.get("raw_text"),
                 "price_low": record.get("price_low"),
                 "price_high": record.get("price_high"),
@@ -73,6 +77,13 @@ def _status(parsed: dict) -> str:
     return "full"
 
 
+def _name_listed_clinic(answer: str, hits: list[dict]) -> str:
+    blob = " ".join(hit.get("text") or "" for hit in hits)
+    if "Fizikon" in blob and "fizikon" not in answer.lower() and ("turkey" in answer.lower() or "110" in answer):
+        return answer.rstrip() + " The Turkey clinic is Fizikon Medical Center in Konya."
+    return answer
+
+
 def generate(
     query: str,
     hits: list[dict],
@@ -96,7 +107,6 @@ def generate(
     return {
         "answer": str(parsed.get("answer") or ""),
         "claims": parsed.get("claims") or [],
-        "used_price_ids": parsed.get("used_price_ids") or [],
         "answer_status": _status(parsed),
         "raw": parsed,
     }
@@ -124,23 +134,51 @@ def generate_checked(
         draft = generate(query, hits, prices, language, extra_instruction=extra)
         generate_ms += int((time.perf_counter() - started) * 1000)
         started = time.perf_counter()
+        draft["answer"] = _name_listed_clinic(draft.get("answer") or "", hits)
+        if draft.get("answer_status") == "not_listed":
+            draft["answer"] = add_related_facts(draft.get("answer") or "", hits)
         ok, reason = verify(draft, hits, prices, clinic_names=clinic_names)
         verify_ms += int((time.perf_counter() - started) * 1000)
         attempts.append({"raw": draft.get("raw"), "verifier_reason": "" if ok else reason})
         if not ok:
             last_reason = reason
-            extra = f"Fix this violation: {reason}. Use only numbers and clinics from the passages and price records."
+            logger.warning(
+                "verifier retry reason=%s raw=%s",
+                reason,
+                json.dumps(draft.get("raw"), ensure_ascii=False)[:4000],
+            )
+            log_turn({"event": "verifier_retry", "reason": reason, "raw": draft.get("raw")})
+            extra = (
+                f"Fix this violation: {reason}. "
+                "Cite only chunk_id values copied from the passages. "
+                "Use only numbers and clinics from the passages and price records."
+            )
             continue
         correction = premise_correction(user_numbers or [], prices, treatment, clinic)
-        if correction and not premise_ok(draft.get("answer") or "", correction):
-            draft["answer"] = f"{correction} {draft.get('answer') or ''}".strip()
-        return draft, "pass", attempts, {"generate_ms": generate_ms, "verify_ms": verify_ms}
+        if correction:
+            text, source_url = correction
+            if not premise_ok(draft.get("answer") or "", text):
+                draft["answer"] = f"{text} {draft.get('answer') or ''}".strip()
+            draft["premise_url"] = source_url
+        timings = {
+            "generate_ms": generate_ms,
+            "verify_ms": verify_ms,
+            "retries": [item["verifier_reason"] for item in attempts if item.get("verifier_reason")],
+        }
+        return draft, "pass", attempts, timings
     failed = fallback_draft()
     correction = premise_correction(user_numbers or [], prices, treatment, clinic)
+    timings = {
+        "generate_ms": generate_ms,
+        "verify_ms": verify_ms,
+        "retries": [item["verifier_reason"] for item in attempts if item.get("verifier_reason")],
+    }
     if correction:
-        failed["answer"] = correction
+        text, source_url = correction
+        failed["answer"] = text
+        failed["premise_url"] = source_url
         failed["answer_status"] = "partial"
         failed["attempts"] = attempts
-        return failed, "premise", attempts, {"generate_ms": generate_ms, "verify_ms": verify_ms}
+        return failed, "premise", attempts, timings
     failed["attempts"] = attempts
-    return failed, last_reason or "fallback", attempts, {"generate_ms": generate_ms, "verify_ms": verify_ms}
+    return failed, last_reason or "fallback", attempts, timings

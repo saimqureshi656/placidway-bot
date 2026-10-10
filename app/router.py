@@ -121,10 +121,14 @@ def _history_text(history: list[dict]) -> str:
     return "\n".join(f"{turn.get('role', 'user')}: {turn.get('content', '')}" for turn in history[-6:])
 
 
-def choose_intent(rule_intent: str | None, llm_intent: str) -> str:
-    """Agree when both say the same thing. Otherwise the safest template intent wins."""
+def choose_intent(rule_intent: str | None, llm_intent: str, message: str = "") -> str:
+    """Agree when both say the same thing. A medical-advice phrase wins. Info and price rules stay put."""
+    if _MEDICAL.search(message or ""):
+        return "medical_advice"
     if rule_intent and rule_intent == llm_intent:
         return llm_intent
+    if rule_intent in {"info", "price", "comparison", "lead"}:
+        return rule_intent
     present = [intent for intent in _SAFETY if intent in {rule_intent, llm_intent}]
     if present:
         return present[0]
@@ -172,7 +176,7 @@ def resolve(message: str, history: list[dict] | None = None) -> tuple[Route, dic
     rewritten = _from_llm(parsed, message)
     rewritten["is_followup"] = bool(rewritten["is_followup"] or is_followup(message, history))
     ruled = route_rules(message)
-    intent = choose_intent(ruled.intent if ruled else None, rewritten["intent"])
+    intent = choose_intent(ruled.intent if ruled else None, rewritten["intent"], message)
     method = "agree" if ruled and ruled.intent == intent else "llm"
     return Route(intent, _user_numbers(parsed, message), method=method), rewritten
 
