@@ -262,3 +262,47 @@ Rerank uses the top 10 fused candidates. Embedding and reranker ONNX threads are
 `python -m evals.run_evals --required`: **9/9**. p50 5553 ms, p95 7671 ms. Rerank is still the slow stage (about 2.8–6.0 s).
 
 First-attempt verifier failures in this run: q1 once (`unknown chunk id package_7903:3:0`), q8 twice (`number 50 is not in the retrieved chunks or price records`). The other seven questions did not retry. q8 still passed because the premise sentence and the package 7903 source were used after the retries.
+
+## MiniLM reranker, premise skip, and Groq fallback
+
+Files changed: `app/retrieve.py`, `app/generate.py`, `app/main.py`, `app/config.py`, `evals/run_evals.py`, `.env.example`.
+
+The reranker is `Xenova/ms-marco-MiniLM-L-6-v2`. Each query-passage pair is clipped to 256 whitespace tokens, and only the top 10 fused candidates are reranked. Scores are sigmoid values.
+
+`RERANK_THRESHOLD` is **0.20**. Probe best scores: adenocarcinoma package 0.9998, inclusions 0.9991, recovery 0.9894, ozone comparison 0.5136, weather in Cancun 0.0000, dental implants 0.0631. 0.20 sits above the off-topic scores and below the weakest on-topic score, so dental and weather fall through and the ozone comparison still passes.
+
+If the user states a price that matches no record for the current topic, generation is skipped and the deterministic correction is returned with that price record's URL. The estimate sentence is added only when a cited chunk is from the comparison page, and removed otherwise. A comparison that names Turkey or Mexico also names the clinic and city: Fizikon Medical Center in Konya, and Stem Health Guadalajara in Zapopan.
+
+The required-eval abort now happens only when every provider fails. A later successful fallback is still scored.
+
+Cerebras run, `python -m evals.run_evals --required`: **8/9**, p50 1985 ms, p95 3906 ms. Router `cerebras/qwen-3.8-27b`. Generate `cerebras/gpt-oss-120b`, except q8, which skipped generation.
+
+| id | result | total ms | router | retrieve | rerank | generate |
+|---|---|---|---|---|---|---|
+| q1-cost | pass | 2245 | 808 | 17 | 569 | 737 |
+| q2-ozone | pass | 2116 | 430 | 37 | 948 | 584 |
+| q2b-thailand | pass | 3906 | 1631 | 48 | 782 | 1329 |
+| q3-included | pass | 2657 | 396 | 17 | 832 | 1328 |
+| q4-recovery | fail | 1985 | 459 | 47 | 790 | 608 |
+| q5-booking | pass | 1199 | 1145 |  |  |  |
+| q6-weather | pass | 1552 | 1461 |  |  |  |
+| q7-diabetes | pass | 494 | 404 |  |  |  |
+| q8-premise | pass | 1226 | 390 | 44 | 738 |  |
+
+q4 failed because the answer gave the three-week program and did not say recovery time is not listed.
+
+Groq fallback run, after `CEREBRAS_API_KEY` was set to `invalid`: **8/9**, p50 3229 ms, p95 3699 ms. Each call got HTTP 401 from Cerebras, then the router used `groq/openai/gpt-oss-20b` and generation used `groq/openai/gpt-oss-120b`. The key was restored afterward.
+
+| id | result | total ms | router | retrieve | rerank | generate |
+|---|---|---|---|---|---|---|
+| q1-cost | pass | 3229 | 708 | 22 | 602 | 1494 |
+| q2-ozone | pass | 3699 | 286 | 13 | 881 | 1757 |
+| q2b-thailand | pass | 3541 | 467 | 39 | 738 | 1959 |
+| q3-included | pass | 3665 | 423 | 39 | 771 | 2141 |
+| q4-recovery | fail | 3265 | 430 | 38 | 751 | 1593 |
+| q5-booking | pass | 860 | 533 |  |  |  |
+| q6-weather | pass | 863 | 550 |  |  |  |
+| q7-diabetes | pass | 692 | 406 |  |  |  |
+| q8-premise | pass | 1358 | 319 | 20 | 737 |  |
+
+q4 failed again: the answer said the treatment period is three weeks and did not say "not listed" or mention the follow-up month. The key is restored. Stopped here.

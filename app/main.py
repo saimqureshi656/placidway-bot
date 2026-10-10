@@ -15,6 +15,7 @@ from app import db
 from app.config import ROOT, get_settings
 from app.diagnostics import log_turn
 from app.generate import generate_checked
+from app.verify import premise_correction
 from app.llm import LLMError, llm_calls, start_llm_log, warm_http
 from app.retrieve import get_retriever
 from app.router import resolve
@@ -339,7 +340,20 @@ def chat(body: ChatRequest, request: Request) -> dict:
             result = get_retriever().search(rewritten, intent=routed.intent, entities=entities)
             timings.update(result.timings)
             hits = [hit.__dict__ for hit in result.hits]
-            if result.below_threshold or not hits:
+            topic = _treatment(rewritten, entities, body.history)
+            clinic_name = _clinic(rewritten, entities, body.history)
+            correction = None
+            if routed.user_numbers:
+                pool = result.prices or [
+                    record for record in get_retriever().price_records if record.get("answerable", True)
+                ]
+                correction = premise_correction(routed.user_numbers, pool, topic, clinic_name)
+            if correction:
+                answer, premise_url = correction
+                answer_status = "partial"
+                grounded = True
+                verifier_status = "premise"
+            elif result.below_threshold or not hits:
                 answer = medical_advice() if routed.intent == "medical_advice" else fallback()
                 grounded = routed.intent == "medical_advice"
                 answer_status = "full" if routed.intent == "medical_advice" else ""
@@ -353,8 +367,8 @@ def chat(body: ChatRequest, request: Request) -> dict:
                     result.prices,
                     language=language,
                     user_numbers=routed.user_numbers,
-                    treatment=_treatment(rewritten, entities, body.history),
-                    clinic=_clinic(rewritten, entities, body.history),
+                    treatment=topic,
+                    clinic=clinic_name,
                     clinic_names=_clinic_names(),
                 )
                 timings.update(stage_timings)

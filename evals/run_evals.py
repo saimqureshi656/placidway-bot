@@ -84,15 +84,13 @@ def percentile(values: list[float], fraction: float) -> float:
 
 
 def _provider_error(payload: dict) -> str:
+    """Abort only when every provider failed. A later successful fallback is still scored."""
     debug = payload.get("debug") or {}
-    if debug.get("verifier_status") == "error":
-        return str(debug.get("verifier_reason") or "provider error")
-    for call in debug.get("llm_calls") or []:
-        if call.get("error"):
-            return f"{call.get('provider')} {call.get('model')}: {call.get('error')}"
     answer = payload.get("answer") or ""
-    if answer.startswith("I'm temporarily unavailable"):
-        return answer
+    if debug.get("verifier_status") == "error" or answer.startswith("I'm temporarily unavailable"):
+        calls = debug.get("llm_calls") or []
+        failed = next((call.get("error") for call in calls if call.get("error")), "")
+        return str(debug.get("verifier_reason") or failed or "provider error")
     return ""
 
 

@@ -20,7 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 RRF_K = 60
 CANDIDATES = 20
 RERANK_POOL = 10
-RERANK_CHARS = 650
+RERANK_TOKENS = 256
+RERANK_MODEL = "Xenova/ms-marco-MiniLM-L-6-v2"
 FLAG_WEIGHT = 0.25
 TREATMENT_BOOST = 0.08
 COUNTRY_BOOST = 0.04
@@ -89,8 +90,8 @@ class Retriever:
         self.faiss_index = faiss.read_index(str(self.version_dir / "chunks.faiss"))
         self.query_prefix = self.manifest.get("query_prefix") or BGE_QUERY_PREFIX
         self.embed_model = self.manifest["embed_model"]
-        self.reranker = load_reranker(self.manifest.get("rerank_model") or "BAAI/bge-reranker-base")
-        self.threshold = float(env.get("RERANK_THRESHOLD") or 0.30)
+        self.reranker = load_reranker(RERANK_MODEL)
+        self.threshold = float(env.get("RERANK_THRESHOLD") or 0.20)
         self.top_k = int(env.get("TOP_K") or 5)
         self.price_records = json.loads(PRICES_PATH.read_text(encoding="utf-8"))
 
@@ -173,8 +174,15 @@ class Retriever:
                 boosted[chunk_index] += COUNTRY_BOOST
         return boosted
 
+    def _token_clip(self, text: str, limit: int) -> str:
+        words = text.split()
+        if len(words) <= limit:
+            return text
+        return " ".join(words[:limit])
+
     def _rerank_text(self, query: str, text: str) -> str:
-        if len(text) <= RERANK_CHARS:
+        budget = max(32, RERANK_TOKENS - len(query.split()))
+        if len(text.split()) <= budget:
             return text
         stop = {
             "therapy",
@@ -205,10 +213,10 @@ class Retriever:
             key=lambda part: sum(term in part.lower() for term in terms),
             reverse=True,
         )[:2]
-        head = text[:120]
+        head = " ".join(text.split()[:40])
         if not chosen:
-            return text[:RERANK_CHARS]
-        return (head + "\n" + "\n".join(chosen))[:RERANK_CHARS]
+            return self._token_clip(text, budget)
+        return self._token_clip(head + "\n" + "\n".join(chosen), budget)
 
     def _rerank(self, query: str, indexes: list[int]) -> list[Hit]:
         if not indexes:

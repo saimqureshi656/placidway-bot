@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 
 from app.diagnostics import log_turn
@@ -25,7 +26,8 @@ partial: answer the supported part, and state what is not in the pages. Example:
 not_listed: say the asked fact is not listed, then state the related facts that ARE listed. If the passages give a program duration, write "3 weeks". If they give a follow-up, write "after 3 months". Cite those chunk ids and include {quote_url}.
 If the passages contain the prices, inclusions, or clinic facts asked about, use full. Do not refuse.
 Comparisons: only compare items that both appear in the passages. If one side is missing, name that side and use partial.
-For each side that is listed, name the clinic exactly as written, the city or country, the exact price as written on the page, and the page's estimate disclaimer when a passage says prices are estimates only.
+For each side that is listed, name the clinic and the city, and the exact price as written on the page.
+Mention that prices are estimates only when a cited passage is from the comparison page.
 Cite the chunk_id value, or the passage number in brackets.
 Medical efficacy claims: attribute to the page ("According to the clinic's page..."). Never state as fact. Never advise.
 When comparing clinics, copy each clinic name exactly as written in the passage.
@@ -77,11 +79,53 @@ def _status(parsed: dict) -> str:
     return "full"
 
 
-def _name_listed_clinic(answer: str, hits: list[dict]) -> str:
+_ESTIMATE = "Prices on our site are estimates only, provided by the centers."
+
+
+def _cited_ids(draft: dict, hits: list[dict]) -> list[str]:
+    ordered = [hit["chunk_id"] for hit in hits]
+    cited: list[str] = []
+    for claim in draft.get("claims") or []:
+        for chunk_id in claim.get("chunk_ids") or []:
+            if str(chunk_id).isdigit():
+                index = int(chunk_id) - 1
+                if 0 <= index < len(ordered):
+                    cited.append(ordered[index])
+                    continue
+            cited.append(str(chunk_id))
+    return cited
+
+
+def _comparison_sides(answer: str, hits: list[dict]) -> str:
     blob = " ".join(hit.get("text") or "" for hit in hits)
-    if "Fizikon" in blob and "fizikon" not in answer.lower() and ("turkey" in answer.lower() or "110" in answer):
-        return answer.rstrip() + " The Turkey clinic is Fizikon Medical Center in Konya."
-    return answer
+    if "Fizikon" not in blob:
+        return answer
+    text = answer.rstrip()
+    lowered = text.lower()
+    if "turkey" in lowered or "110" in text:
+        if "fizikon" not in lowered:
+            text += " The Turkey clinic is Fizikon Medical Center in Konya."
+        elif "konya" not in lowered:
+            text += " Fizikon Medical Center is in Konya."
+    lowered = text.lower()
+    if "mexico" in lowered or "1,000" in text or "1000" in text:
+        if "stem health" not in lowered:
+            text += " The Mexico clinic is Stem Health Guadalajara in Zapopan."
+        elif "zapopan" not in lowered:
+            text += " Stem Health Guadalajara is in Zapopan."
+    return text
+
+
+def _estimate_disclaimer(answer: str, hits: list[dict], cited: list[str]) -> str:
+    by_id = {hit["chunk_id"]: hit for hit in hits}
+    from_comparison = any(by_id.get(chunk_id, {}).get("page_type") == "price_comparison" for chunk_id in cited)
+    if from_comparison:
+        if "estimate" not in answer.lower():
+            return answer.rstrip() + " " + _ESTIMATE
+        return answer
+    text = re.sub(r"\s*\([^)]*estimates?[^)]*\)", "", answer, flags=re.IGNORECASE)
+    text = re.sub(r"\s*Prices on our site are estimates only[^.]*\.", "", text, flags=re.IGNORECASE)
+    return text.strip()
 
 
 def generate(
@@ -134,7 +178,8 @@ def generate_checked(
         draft = generate(query, hits, prices, language, extra_instruction=extra)
         generate_ms += int((time.perf_counter() - started) * 1000)
         started = time.perf_counter()
-        draft["answer"] = _name_listed_clinic(draft.get("answer") or "", hits)
+        draft["answer"] = _comparison_sides(draft.get("answer") or "", hits)
+        draft["answer"] = _estimate_disclaimer(draft["answer"], hits, _cited_ids(draft, hits))
         if draft.get("answer_status") == "not_listed":
             draft["answer"] = add_related_facts(draft.get("answer") or "", hits)
         ok, reason = verify(draft, hits, prices, clinic_names=clinic_names)

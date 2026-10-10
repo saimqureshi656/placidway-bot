@@ -52,7 +52,7 @@ def get_settings() -> Settings:
         router_model=env.get("ROUTER_MODEL", "qwen-3.8-27b"),
         gen_model=env.get("GEN_MODEL", "gpt-oss-120b"),
         gen_fallback_model=env.get("GEN_FALLBACK_MODEL", "qwen-3.8-27b"),
-        rerank_threshold=float(env.get("RERANK_THRESHOLD", "0.005")),
+        rerank_threshold=float(env.get("RERANK_THRESHOLD", "0.20")),
         top_k=int(env.get("TOP_K", "5")),
         admin_token=env.get("ADMIN_TOKEN", ""),
         quote_url=env.get("QUOTE_URL", "https://www.placidway.com/request-info"),
