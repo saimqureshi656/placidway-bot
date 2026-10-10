@@ -2,208 +2,587 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>PlacidWay Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
-    :root { color-scheme: light; --ink: #1c2430; --muted: #5c6b7a; --line: #d7e0e8; --bg: #f4f7f8; --card: #fff; --accent: #0f6e6e; }
+    :root {
+      color-scheme: light;
+      --ink: #17212b;
+      --muted: #5b6875;
+      --faint: #8a96a1;
+      --line: #e3e9ee;
+      --bg: #f7fafb;
+      --card: #ffffff;
+      --accent: #0d7f7a;
+      --accent-ink: #0a6662;
+      --accent-soft: #e6f4f3;
+      --warn-bg: #fff8ec;
+      --warn-line: #f1dcb5;
+      --error: #a23a3a;
+      --radius: 18px;
+      --shadow: 0 1px 2px rgba(23, 33, 43, 0.06), 0 2px 8px rgba(23, 33, 43, 0.04);
+    }
     * { box-sizing: border-box; }
-    body { margin: 0; font: 16px/1.45 "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); }
-    header, footer { padding: 16px 20px; background: var(--card); border-bottom: 1px solid var(--line); }
-    header h1 { margin: 0; font-size: 1.25rem; }
-    header p { margin: 4px 0 0; color: var(--muted); }
-    main { max-width: 760px; margin: 0 auto; padding: 16px; }
-    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-    button, input, textarea { font: inherit; }
-    .chip, .source, .thumb { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 8px 12px; cursor: pointer; }
-    .log { display: flex; flex-direction: column; gap: 12px; min-height: 40vh; }
-    .msg { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
-    .msg.user { background: #e7f4f4; }
-    .sources { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-    .snippet { display: none; margin-top: 8px; color: var(--muted); font-size: 0.92rem; }
-    .snippet.open { display: block; }
-    .disclaimer { background: #fff6e8; border: 1px solid #efd3a4; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
-    form.composer, form.lead { display: grid; gap: 8px; margin-top: 12px; }
-    form.composer { grid-template-columns: 1fr auto; }
-    textarea, input { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
-    .send, .primary { background: var(--accent); color: white; border: 0; border-radius: 8px; padding: 10px 14px; cursor: pointer; }
-    .error { color: #9b2c2c; }
-    footer { border-top: 1px solid var(--line); border-bottom: 0; color: var(--muted); }
-    @media (max-width: 640px) { form.composer { grid-template-columns: 1fr; } }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font: 16px/1.55 "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      min-height: 100dvh;
+    }
+    button, input, textarea { font: inherit; color: inherit; }
+    a { color: var(--accent-ink); }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    .wrap { width: 100%; max-width: 760px; margin: 0 auto; padding: 0 16px; }
+
+    header {
+      position: sticky; top: 0; z-index: 2;
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(6px);
+      border-bottom: 1px solid var(--line);
+    }
+    header .wrap { display: flex; align-items: center; gap: 12px; padding-top: 14px; padding-bottom: 14px; }
+    .logo {
+      width: 36px; height: 36px; border-radius: 10px; flex: none;
+      background: var(--accent); color: #fff; display: grid; place-items: center;
+      font-weight: 600; font-size: 18px;
+    }
+    header h1 { margin: 0; font-size: 1.1rem; font-weight: 600; line-height: 1.2; }
+    header p { margin: 2px 0 0; color: var(--muted); font-size: 0.875rem; }
+
+    .disclaimer {
+      display: flex; gap: 10px; align-items: flex-start;
+      margin-top: 12px; padding: 10px 12px;
+      background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 12px;
+      color: #6b5328; font-size: 0.875rem;
+    }
+    .disclaimer p { margin: 0; flex: 1; }
+    .disclaimer button { border: 0; background: none; cursor: pointer; color: #6b5328; padding: 0 4px; font-size: 1.1rem; line-height: 1; }
+
+    main { flex: 1; padding: 8px 0 16px; }
+    .log { display: flex; flex-direction: column; gap: 14px; padding-top: 8px; }
+
+    .empty { text-align: center; padding: 40px 0 8px; }
+    .empty h2 { margin: 0 0 6px; font-size: 1.25rem; font-weight: 600; }
+    .empty p { margin: 0 auto 20px; color: var(--muted); max-width: 30rem; }
+    .examples { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; text-align: left; }
+    .example {
+      border: 1px solid var(--line); background: var(--card); border-radius: 14px;
+      padding: 12px 14px; cursor: pointer; box-shadow: var(--shadow); line-height: 1.4;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .example:hover { border-color: var(--accent); background: var(--accent-soft); }
+    .example span { display: block; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent-ink); margin-bottom: 4px; }
+
+    .row { display: flex; }
+    .row.user { justify-content: flex-end; }
+    .bubble {
+      max-width: 85%; padding: 12px 16px; border-radius: var(--radius);
+      overflow-wrap: anywhere; box-shadow: var(--shadow);
+    }
+    .row.user .bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 6px; }
+    .row.bot .bubble { background: var(--card); border: 1px solid var(--line); border-bottom-left-radius: 6px; }
+    .row.user .bubble a { color: #fff; }
+    .bubble p { margin: 0 0 8px; }
+    .bubble p:last-child, .bubble ul:last-child, .bubble ol:last-child { margin-bottom: 0; }
+    .bubble ul, .bubble ol { margin: 0 0 8px; padding-left: 1.3em; }
+    .bubble li { margin: 2px 0; }
+
+    .sources { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+    .sources-label { font-size: 0.75rem; font-weight: 600; color: var(--faint); text-transform: uppercase; letter-spacing: 0.04em; }
+    .source { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 10px; border-radius: 999px; font-size: 0.8125rem;
+      background: var(--accent-soft); color: var(--accent-ink); text-decoration: none;
+      border: 1px solid transparent; max-width: 100%;
+    }
+    .chip:hover { border-color: var(--accent); }
+    .chip .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .toggle { border: 0; background: none; color: var(--muted); font-size: 0.8125rem; cursor: pointer; padding: 2px 4px; text-decoration: underline; text-underline-offset: 2px; }
+    .passage { width: 100%; margin: 2px 0 4px; padding: 8px 10px; border-left: 3px solid var(--accent); background: var(--bg); border-radius: 0 8px 8px 0; font-size: 0.875rem; color: var(--muted); }
+    .passage strong { color: var(--ink); font-weight: 600; }
+
+    .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
+    .thumb {
+      border: 1px solid var(--line); background: var(--card); border-radius: 999px;
+      width: 34px; height: 30px; cursor: pointer; display: grid; place-items: center; color: var(--muted);
+    }
+    .thumb svg { width: 16px; height: 16px; }
+    .thumb[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
+    .thumb:disabled { cursor: default; }
+    .thumb:disabled:not([aria-pressed="true"]) { opacity: 0.45; }
+    .thanks { font-size: 0.8125rem; color: var(--faint); }
+    .quote-btn { margin-left: auto; border: 1px solid var(--accent); color: var(--accent-ink); background: var(--card); border-radius: 999px; padding: 4px 12px; font-size: 0.8125rem; cursor: pointer; }
+    .quote-btn:hover { background: var(--accent-soft); }
+
+    .lead { margin-top: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); }
+    .lead h3 { margin: 0 0 4px; font-size: 0.95rem; font-weight: 600; }
+    .lead > p { margin: 0 0 10px; color: var(--muted); font-size: 0.875rem; }
+    .lead label { display: block; font-size: 0.8125rem; font-weight: 500; margin-bottom: 8px; }
+    .lead input { display: block; width: 100%; margin-top: 4px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+    .lead input[aria-invalid="true"] { border-color: var(--error); }
+    .field-error { color: var(--error); font-size: 0.8125rem; margin: -4px 0 8px; }
+    .lead .buttons { display: flex; gap: 8px; margin-top: 4px; }
+    .primary { background: var(--accent); color: #fff; border: 0; border-radius: 10px; padding: 9px 16px; cursor: pointer; font-weight: 500; }
+    .primary:hover { background: var(--accent-ink); }
+    .primary:disabled { opacity: 0.6; cursor: default; }
+    .ghost { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 9px 8px; }
+    .lead .done { margin: 0; color: var(--accent-ink); font-weight: 500; }
+
+    .typing { display: inline-flex; gap: 4px; padding: 4px 0; }
+    .typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); animation: blink 1.2s infinite ease-in-out; }
+    .typing i:nth-child(2) { animation-delay: 0.15s; }
+    .typing i:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes blink { 0%, 80%, 100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
+    @media (prefers-reduced-motion: reduce) { .typing i { animation: none; opacity: 0.6; } }
+
+    .error-bubble { border-color: #ecc9c9 !important; }
+    .error-bubble p { color: var(--error); }
+
+    .composer-bar { position: sticky; bottom: 0; background: linear-gradient(to top, var(--bg) 70%, rgba(247, 250, 251, 0)); padding-top: 12px; }
+    form.composer {
+      display: flex; align-items: flex-end; gap: 8px;
+      background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 6px 6px 6px 14px;
+      box-shadow: var(--shadow);
+    }
+    form.composer:focus-within { border-color: var(--accent); }
+    form.composer textarea { flex: 1; border: 0; resize: none; padding: 8px 0; max-height: 160px; background: none; outline: none; line-height: 1.45; }
+    .send { flex: none; width: 40px; height: 40px; border-radius: 12px; border: 0; background: var(--accent); color: #fff; cursor: pointer; display: grid; place-items: center; }
+    .send:disabled { background: #b7cfcd; cursor: default; }
+    .send svg { width: 18px; height: 18px; }
+    .hint { margin: 6px 4px 0; font-size: 0.75rem; color: var(--faint); }
+
+    footer { padding: 10px 0 calc(12px + env(safe-area-inset-bottom)); font-size: 0.8125rem; color: var(--faint); }
+    footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; }
+
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+    @media (max-width: 560px) {
+      .examples { grid-template-columns: 1fr; }
+      .bubble { max-width: 92%; }
+      .empty { padding-top: 24px; }
+      .hint { display: none; }
+    }
   </style>
 </head>
 <body>
   <header>
-    <h1>PlacidWay Assistant</h1>
-    <p>Answers from PlacidWay pages only</p>
+    <div class="wrap">
+      <div class="logo" aria-hidden="true">P</div>
+      <div>
+        <h1>PlacidWay Assistant</h1>
+        <p>Answers from PlacidWay pages only</p>
+      </div>
+    </div>
+    <div class="wrap" id="disclaimer-slot"></div>
   </header>
+
   <main>
-    <div class="chips" id="chips"></div>
-    <div class="log" id="log"></div>
-    <p class="error" id="error" hidden></p>
-    <form class="composer" id="composer">
-      <textarea id="message" rows="2" maxlength="1000" placeholder="Ask about a package, price, or comparison" required></textarea>
-      <button class="send" type="submit">Send</button>
-    </form>
+    <div class="wrap">
+      <section class="empty" id="empty">
+        <h2>Ask about ITC Immunity Therapy Center</h2>
+        <p>Package prices, what a program includes, and how listed alternative-medicine prices compare. Every answer links to its source page.</p>
+        <div class="examples" id="examples"></div>
+      </section>
+      <div class="log" id="log" aria-live="polite"></div>
+    </div>
   </main>
-  <footer id="footer">Content last refreshed: …</footer>
+
+  <div class="composer-bar">
+    <div class="wrap">
+      <form class="composer" id="composer">
+        <label for="message" class="sr-only">Your question</label>
+        <textarea id="message" rows="1" maxlength="1000" placeholder="Ask about a package, price, or comparison" autocomplete="off"></textarea>
+        <button class="send" id="send" type="submit" aria-label="Send" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+      </form>
+      <p class="hint">Enter to send, Shift+Enter for a new line</p>
+    </div>
+  </div>
+
+  <footer>
+    <div class="wrap">
+      <span id="refreshed">Content refreshed …</span>
+      <a href="https://www.placidway.com/request-info" target="_blank" rel="noopener">Request a free quote</a>
+    </div>
+  </footer>
+
   <script>
-    const sessionId = crypto.randomUUID();
-    const history = [];
-    const chips = [
-      "How much does adenocarcinoma cancer treatment cost in Mexico?",
-      "What is included in the adenocarcinoma treatment package?",
-      "Is ozone therapy cheaper in Turkey or Mexico?",
-      "¿Cuánto cuesta el tratamiento del cáncer anal en Tijuana?"
+    const QUOTE_URL = "https://www.placidway.com/request-info";
+    const DISCLAIMER = "This is general information from PlacidWay's pages, not medical advice. Please consult your doctor before making treatment decisions.";
+    const EXAMPLES = [
+      { tag: "Cost", text: "How much does adenocarcinoma cancer treatment cost in Mexico?" },
+      { tag: "Package contents", text: "What is included in the adenocarcinoma treatment package?" },
+      { tag: "Comparison", text: "Is ozone therapy cheaper in Turkey or Mexico?" },
+      { tag: "Español", text: "¿Cuánto cuesta el tratamiento del cáncer anal en Tijuana?" }
     ];
-    const chipBox = document.getElementById("chips");
-    chips.forEach((text) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "chip";
-      button.textContent = text;
-      button.addEventListener("click", () => ask(text));
-      chipBox.appendChild(button);
-    });
+    // Page titles for the seven allowlisted URLs. Anything else falls back to the URL slug.
+    const PAGE_TITLES = [
+      ["/package/7903/", "Adenocarcinoma package"],
+      ["/package/7902/", "Adrenal cancer package"],
+      ["/package/7901/", "Anal cancer package"],
+      ["/profile-videos/5/", "ITC videos"],
+      ["/price-list/5/", "ITC price list"],
+      ["/profile/5/", "ITC clinic profile"],
+      ["/search-medical-pricings/", "Alternative medicine price comparison"]
+    ];
 
-    async function refreshFooter() {
-      try {
-        const health = await fetch("/health").then((response) => response.json());
-        const when = health.last_refresh ? new Date(health.last_refresh).toLocaleString() : "unknown";
-        document.getElementById("footer").textContent = "Content last refreshed: " + when;
-      } catch (_error) {
-        document.getElementById("footer").textContent = "Content last refreshed: unavailable";
-      }
-    }
-    refreshFooter();
+    const sessionId = (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()) + Math.random().toString(16).slice(2);
+    const history = [];
+    const log = document.getElementById("log");
+    const box = document.getElementById("message");
+    const sendButton = document.getElementById("send");
+    let loading = false;
+    let disclaimerShown = false;
+    let leadSent = false;
 
-    function addMessage(role, text, extra) {
-      const node = document.createElement("article");
-      node.className = "msg " + role;
-      const body = document.createElement("div");
-      body.textContent = text;
-      node.appendChild(body);
-      if (extra) node.appendChild(extra);
-      document.getElementById("log").appendChild(node);
-      node.scrollIntoView({ block: "end" });
+    // ---------- helpers ----------
+    function el(tag, attrs, children) {
+      const node = document.createElement(tag);
+      Object.entries(attrs || {}).forEach(([key, value]) => {
+        if (key === "class") node.className = value;
+        else if (key === "text") node.textContent = value;
+        else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+        else node.setAttribute(key, value);
+      });
+      (children || []).forEach((child) => child && node.appendChild(child));
       return node;
     }
 
+    function escapeHtml(text) {
+      return text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    // Inline markdown on already-escaped text: links, bold, italics.
+    function inline(text) {
+      return escapeHtml(text)
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+        .replace(/(^|[\s(])(https?:\/\/[^\s<)]+[^\s<).,;:!?])/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>')
+        .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+        .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>");
+    }
+
+    // Paragraphs, line breaks, and "-", "*", or "1." lists.
+    function renderMarkdown(text) {
+      const lines = String(text || "").replace(/\r/g, "").split("\n");
+      let html = "";
+      let list = null;
+      let para = [];
+      const flushPara = () => { if (para.length) { html += "<p>" + para.map(inline).join("<br>") + "</p>"; para = []; } };
+      const closeList = () => { if (list) { html += "</" + list + ">"; list = null; } };
+      for (const raw of lines) {
+        const line = raw.trim();
+        const bullet = line.match(/^[-*•]\s+(.*)$/);
+        const numbered = line.match(/^\d+[.)]\s+(.*)$/);
+        if (bullet || numbered) {
+          flushPara();
+          const kind = bullet ? "ul" : "ol";
+          if (list !== kind) { closeList(); html += "<" + kind + ">"; list = kind; }
+          html += "<li>" + inline((bullet || numbered)[1]) + "</li>";
+        } else if (!line) {
+          flushPara(); closeList();
+        } else {
+          closeList(); para.push(line);
+        }
+      }
+      flushPara(); closeList();
+      return html;
+    }
+
+    function pageTitle(url) {
+      const match = PAGE_TITLES.find(([part]) => url.includes(part));
+      if (match) return match[1];
+      try {
+        const slug = new URL(url).pathname.split("/").filter(Boolean).pop() || "Source";
+        return decodeURIComponent(slug).replace(/-/g, " ");
+      } catch (_e) { return "Source"; }
+    }
+
+    // Passages start with "Page: X | Section: Y". Show only the passage text after the section name.
+    function cleanSnippet(snippet, section) {
+      let text = String(snippet || "");
+      const marker = "Section: " + (section || "");
+      const at = text.indexOf(marker);
+      if (text.startsWith("Page:") && at !== -1) text = text.slice(at + marker.length);
+      return text.trim() ? text.trim() + (String(snippet || "").length >= 200 ? "…" : "") : "";
+    }
+
+    function scrollToEnd() {
+      requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" }));
+    }
+
+    function setLoading(state) {
+      loading = state;
+      sendButton.disabled = state || !box.value.trim();
+      box.setAttribute("aria-busy", String(state));
+    }
+
+    // ---------- pieces of a bot answer ----------
     function sourceList(sources) {
-      const wrap = document.createElement("div");
-      wrap.className = "sources";
-      (sources || []).forEach((source) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "source";
-        button.textContent = source.section || source.title || "Source";
-        const snippet = document.createElement("div");
-        snippet.className = "snippet";
-        snippet.textContent = source.snippet || "";
-        button.addEventListener("click", () => {
-          snippet.classList.toggle("open");
-          if (source.url) window.open(source.url, "_blank", "noopener");
-        });
-        wrap.appendChild(button);
-        wrap.appendChild(snippet);
+      const safe = (sources || []).filter((s) => /^https?:\/\//.test(s.url || ""));
+      if (!safe.length) return null;
+      const wrap = el("div", { class: "sources" }, [el("div", { class: "sources-label", text: "Sources" })]);
+      safe.forEach((source) => {
+        const link = el("a", { class: "chip", href: source.url, target: "_blank", rel: "noopener", title: source.url }, [
+          el("span", { class: "label", text: pageTitle(source.url) }),
+          el("span", { "aria-hidden": "true", text: "↗" })
+        ]);
+        const item = el("div", { class: "source" }, [link]);
+        const snippet = cleanSnippet(source.snippet, source.section);
+        if (snippet || source.section) {
+          const passage = el("div", { class: "passage", hidden: "" });
+          if (source.section) passage.appendChild(el("strong", { text: source.section + ": " }));
+          passage.appendChild(document.createTextNode(snippet || ""));
+          const toggle = el("button", { type: "button", class: "toggle", "aria-expanded": "false", text: "Show passage" });
+          toggle.addEventListener("click", () => {
+            const open = passage.hidden;
+            passage.hidden = !open;
+            toggle.textContent = open ? "Hide passage" : "Show passage";
+            toggle.setAttribute("aria-expanded", String(open));
+          });
+          item.appendChild(toggle);
+          item.appendChild(passage);
+        }
+        wrap.appendChild(item);
       });
       return wrap;
     }
 
-    function leadForm() {
-      const form = document.createElement("form");
-      form.className = "lead";
-      form.innerHTML = "<p>Want the team to follow up?</p><button type='button' class='primary' id='accept'>Yes, contact me</button>";
-      form.querySelector("#accept").addEventListener("click", () => {
-        form.innerHTML = "<input name='name' placeholder='Name' required><input name='email' type='email' placeholder='Email' required><input name='interest' placeholder='Interest' required><button class='primary' type='submit'>Submit</button>";
-      });
-      form.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const data = Object.fromEntries(new FormData(form).entries());
-        const response = await fetch("/api/lead", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ session_id: sessionId, ...data })
-        });
-        form.textContent = response.ok ? "Thank you. The PlacidWay team will follow up." : "Please check the email and try again.";
-      });
-      return form;
-    }
+    const THUMB_UP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10v11H4V10h3zm0 0 4-7a2 2 0 0 1 2 2v4h5.5a2 2 0 0 1 2 2.3l-1.2 7A2 2 0 0 1 17.3 21H7"/></svg>';
+    const THUMB_DOWN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 14V3h3v11h-3zm0 0-4 7a2 2 0 0 1-2-2v-4H5.5a2 2 0 0 1-2-2.3l1.2-7A2 2 0 0 1 6.7 3H17"/></svg>';
 
-    async function ask(text) {
-      const error = document.getElementById("error");
-      error.hidden = true;
-      addMessage("user", text);
-      const pending = addMessage("assistant", "Checking sources...");
-      try {
-        const response = await fetch("/api/chat/stream", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ session_id: sessionId, message: text, history: history.slice(-6) })
-        });
-        if (!response.ok || !response.body) throw new Error("request failed");
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let data = null;
-        while (true) {
-          const step = await reader.read();
-          if (step.done) break;
-          buffer += decoder.decode(step.value, { stream: true });
-          const parts = buffer.split("\n\n");
-          buffer = parts.pop();
-          for (const part of parts) {
-            const line = part.split("\n").find((item) => item.startsWith("data:"));
-            if (!line) continue;
-            const event = JSON.parse(line.slice(5).trim());
-            if (event.type === "status") pending.firstChild.textContent = event.text;
-            if (event.type === "answer") data = event.payload;
-          }
-        }
-        if (!data) throw new Error("empty stream");
-        pending.replaceChildren();
-        if (data.show_disclaimer) {
-          const banner = document.createElement("div");
-          banner.className = "disclaimer";
-          banner.textContent = "This is general information from PlacidWay's pages, not medical advice. Please consult your doctor before making treatment decisions.";
-          pending.appendChild(banner);
-        }
-        const body = document.createElement("div");
-        body.textContent = data.answer;
-        pending.appendChild(body);
-        pending.appendChild(sourceList(data.sources));
-        if (data.offer_lead_form) pending.appendChild(leadForm());
-        const row = document.createElement("div");
-        ["up", "down"].forEach((rating) => {
-          const thumb = document.createElement("button");
-          thumb.type = "button";
-          thumb.className = "thumb";
-          thumb.textContent = rating === "up" ? "Yes" : "No";
-          thumb.addEventListener("click", () => {
-            fetch("/api/feedback", {
+    function feedbackButtons(logId) {
+      if (!logId) return [];
+      const thanks = el("span", { class: "thanks", "aria-live": "polite" });
+      const buttons = [["up", "Helpful", THUMB_UP], ["down", "Not helpful", THUMB_DOWN]].map(([rating, label, icon]) => {
+        const button = el("button", { type: "button", class: "thumb", "aria-label": label, title: label, "aria-pressed": "false" });
+        button.innerHTML = icon;
+        button.addEventListener("click", async () => {
+          buttons.forEach((b) => { b.disabled = true; });
+          button.setAttribute("aria-pressed", "true");
+          try {
+            const response = await fetch("/api/feedback", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ log_id: data.log_id, rating })
+              body: JSON.stringify({ log_id: logId, rating })
             });
-          });
-          row.appendChild(thumb);
+            thanks.textContent = response.ok ? "Thanks for the feedback" : "Feedback not saved";
+          } catch (_e) {
+            thanks.textContent = "Feedback not saved";
+          }
         });
-        pending.appendChild(row);
-        history.push({ role: "user", content: text }, { role: "assistant", content: data.answer });
-      } catch (_err) {
-        pending.remove();
-        error.hidden = false;
-        error.textContent = "I couldn't reach the assistant. Please try again.";
+        return button;
+      });
+      return [...buttons, thanks];
+    }
+
+    function leadCard(interest, onClose) {
+      const card = el("form", { class: "lead", novalidate: "" });
+      const name = el("input", { name: "name", autocomplete: "name", required: "" });
+      const email = el("input", { name: "email", type: "email", autocomplete: "email", required: "" });
+      const topic = el("input", { name: "interest", required: "" });
+      topic.value = interest.slice(0, 200);
+      const emailError = el("p", { class: "field-error", hidden: "" });
+      const submit = el("button", { type: "submit", class: "primary", text: "Send request" });
+      card.append(
+        el("h3", { text: "Get a free quote" }),
+        el("p", { text: "The PlacidWay team will follow up by email." }),
+        el("label", {}, [document.createTextNode("Name"), name]),
+        el("label", {}, [document.createTextNode("Email"), email]),
+        emailError,
+        el("label", {}, [document.createTextNode("What are you interested in?"), topic]),
+        el("div", { class: "buttons" }, [submit, el("button", { type: "button", class: "ghost", text: "Not now", onclick: onClose })])
+      );
+      email.addEventListener("input", () => { email.removeAttribute("aria-invalid"); emailError.hidden = true; });
+      card.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.value.trim())) {
+          email.setAttribute("aria-invalid", "true");
+          emailError.textContent = "Please enter a valid email address.";
+          emailError.hidden = false;
+          email.focus();
+          return;
+        }
+        if (!name.value.trim() || !topic.value.trim()) {
+          (name.value.trim() ? topic : name).focus();
+          return;
+        }
+        submit.disabled = true;
+        submit.textContent = "Sending…";
+        try {
+          const response = await fetch("/api/lead", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session_id: sessionId, name: name.value.trim(), email: email.value.trim(), interest: topic.value.trim() })
+          });
+          if (!response.ok) throw new Error("lead failed");
+          leadSent = true;
+          document.querySelectorAll(".quote-btn").forEach((b) => b.remove());
+          card.replaceChildren(
+            el("h3", { text: "Thank you" }),
+            el("p", { class: "done", text: "Your request is in. The PlacidWay team will follow up by email." })
+          );
+        } catch (_e) {
+          submit.disabled = false;
+          submit.textContent = "Send request";
+          emailError.textContent = "We couldn't send that. Please check your details and try again.";
+          emailError.hidden = false;
+        }
+      });
+      return card;
+    }
+
+    function showDisclaimer() {
+      if (disclaimerShown) return;
+      disclaimerShown = true;
+      const banner = el("div", { class: "disclaimer", role: "note" }, [
+        el("p", { text: DISCLAIMER }),
+        el("button", { type: "button", "aria-label": "Dismiss", text: "×", onclick: () => banner.remove() })
+      ]);
+      document.getElementById("disclaimer-slot").appendChild(banner);
+    }
+
+    // ---------- messages ----------
+    function addUser(text) {
+      document.getElementById("empty").hidden = true;
+      const bubble = el("div", { class: "bubble", dir: "auto" });
+      bubble.innerHTML = renderMarkdown(text);
+      log.appendChild(el("div", { class: "row user" }, [bubble]));
+      scrollToEnd();
+    }
+
+    function addTyping() {
+      const bubble = el("div", { class: "bubble", "aria-label": "Assistant is typing" }, [
+        el("span", { class: "typing" }, [el("i"), el("i"), el("i")])
+      ]);
+      const row = el("div", { class: "row bot" }, [bubble]);
+      log.appendChild(row);
+      scrollToEnd();
+      return row;
+    }
+
+    function fillAnswer(row, data, question) {
+      const bubble = el("div", { class: "bubble", dir: "auto" });
+      const body = el("div");
+      body.innerHTML = renderMarkdown(data.answer || "");
+      bubble.appendChild(body);
+      const sources = sourceList(data.sources);
+      if (sources) bubble.appendChild(sources);
+      const actions = el("div", { class: "actions" }, feedbackButtons(data.log_id));
+      if (data.offer_lead_form && !leadSent) {
+        const quote = el("button", { type: "button", class: "quote-btn", text: "Get a free quote" });
+        quote.addEventListener("click", () => {
+          quote.hidden = true;
+          const card = leadCard(question, () => { card.remove(); quote.hidden = false; });
+          bubble.appendChild(card);
+          card.querySelector("input").focus();
+        });
+        actions.appendChild(quote);
+      }
+      if (actions.childNodes.length) bubble.appendChild(actions);
+      row.replaceChildren(bubble);
+      if (data.show_disclaimer) showDisclaimer();
+      scrollToEnd();
+    }
+
+    function showError(row, question, status) {
+      const message = status === 429
+        ? "Too many questions in a short time. Please wait a moment and try again."
+        : "Sorry, I couldn't reach the assistant just now.";
+      const retry = el("button", { type: "button", class: "primary", text: "Try again" });
+      const bubble = el("div", { class: "bubble error-bubble" }, [
+        el("p", { text: message }),
+        el("div", { class: "actions" }, [retry, el("a", { href: QUOTE_URL, target: "_blank", rel: "noopener", text: "Request a free quote" })])
+      ]);
+      retry.addEventListener("click", () => send(question, row));
+      row.replaceChildren(bubble);
+      scrollToEnd();
+    }
+
+    async function send(question, existingRow) {
+      if (loading) return;
+      setLoading(true);
+      let row = existingRow;
+      if (row) {
+        row.replaceChildren(el("div", { class: "bubble" }, [el("span", { class: "typing" }, [el("i"), el("i"), el("i")])]));
+      } else {
+        row = addTyping();
+      }
+      try {
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionId, message: question, history: history.slice(-6) })
+        });
+        if (!response.ok) { showError(row, question, response.status); return; }
+        const data = await response.json();
+        fillAnswer(row, data, question);
+        history.push({ role: "user", content: question }, { role: "assistant", content: data.answer || "" });
+      } catch (_e) {
+        showError(row, question, 0);
+      } finally {
+        setLoading(false);
+        box.focus();
       }
     }
 
+    function ask(text) {
+      const question = text.trim();
+      if (!question || loading) return;
+      addUser(question);
+      send(question);
+    }
+
+    // ---------- wiring ----------
+    const examples = document.getElementById("examples");
+    EXAMPLES.forEach(({ tag, text }) => {
+      examples.appendChild(el("button", { type: "button", class: "example", dir: "auto", onclick: () => ask(text) }, [
+        el("span", { text: tag }), document.createTextNode(text)
+      ]));
+    });
+
+    function autosize() {
+      box.style.height = "auto";
+      box.style.height = Math.min(box.scrollHeight, 160) + "px";
+      sendButton.disabled = loading || !box.value.trim();
+    }
+    box.addEventListener("input", autosize);
+    box.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
+        document.getElementById("composer").requestSubmit();
+      }
+    });
     document.getElementById("composer").addEventListener("submit", (event) => {
       event.preventDefault();
-      const box = document.getElementById("message");
-      const text = box.value.trim();
-      if (!text) return;
+      if (loading || !box.value.trim()) return;
+      const text = box.value;
       box.value = "";
+      autosize();
       ask(text);
     });
+
+    (async function refreshed() {
+      const label = document.getElementById("refreshed");
+      try {
+        const health = await fetch("/health").then((r) => r.json());
+        const when = health.last_refresh
+          ? new Date(health.last_refresh).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+          : "date unknown";
+        label.textContent = "Content refreshed " + when;
+      } catch (_e) {
+        label.textContent = "Content refresh date unavailable";
+      }
+    })();
   </script>
 </body>
 </html>
