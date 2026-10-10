@@ -2,12 +2,26 @@
 
 from __future__ import annotations
 
+import subprocess
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ENV_PATH = ROOT / ".env"
+
+
+def git_short_hash() -> str:
+    try:
+        output = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=ROOT,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return "dev"
+    return output.strip() or "dev"
 
 
 def _read_env(path: Path = ENV_PATH) -> dict[str, str]:
@@ -38,6 +52,7 @@ class Settings:
     admin_token: str
     quote_url: str
     db_path: str
+    cache_version: str
 
 
 @lru_cache(maxsize=1)
@@ -57,4 +72,5 @@ def get_settings() -> Settings:
         admin_token=env.get("ADMIN_TOKEN", ""),
         quote_url=env.get("QUOTE_URL", "https://www.placidway.com/request-info"),
         db_path=env.get("DB_PATH", "data/app.db"),
+        cache_version=env.get("CACHE_VERSION") or git_short_hash(),
     )

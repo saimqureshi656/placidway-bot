@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from app import db
 from app.config import ROOT, get_settings
 from app.diagnostics import log_turn
-from app.generate import generate_checked
+from app.generate import finish_clinical_answer, generate_checked
 from app.verify import COUNTRIES, destination_gap, format_price, premise_correction, programs_in
 from app.llm import LLMError, llm_calls, start_llm_log, warm_http
 from app.retrieve import get_retriever
@@ -177,7 +177,10 @@ def _program(message: str) -> str:
 
 CONDITION_FIT = (
     "The user asks whether the program fits their own condition. Do not advise. "
-    "Report only what the clinic's page says, starting with \"According to the clinic's page,\"."
+    "Start with \"According to the clinic's page,\" and report only what that page says. "
+    "End with \"Please discuss this with your doctor.\" "
+    "Do not repeat \"safe and effective\". "
+    "Do not say \"I can't tell you whether a treatment is safe\"."
 )
 
 
@@ -454,17 +457,12 @@ def chat(body: ChatRequest, request: Request) -> dict:
                 grounded = answer_status in {"full", "partial", "not_listed"}
                 cited = _cited_ids(draft)
                 cited_price_indexes = [int(index) for index in draft.get("cited_price_indexes") or []]
-            if routed.intent == "medical_advice":
-                advice = medical_advice()
-                rest = answer
-                while rest.startswith(advice):
-                    rest = rest[len(advice) :].strip()
-                if not rest or rest == fallback():
-                    answer = advice
-                    cited = set()
-                    answer_status = "full"
-                else:
-                    answer = f"{advice} {rest}"
+            if (
+                routed.intent == "medical_advice"
+                and asks_condition_fit(body.message)
+                and verifier_status == "pass"
+            ):
+                answer = finish_clinical_answer(answer)
                 grounded = True
         except LLMError as exc:
             answer = unavailable()

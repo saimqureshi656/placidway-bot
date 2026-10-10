@@ -10,7 +10,7 @@ import time
 from app.diagnostics import log_turn
 from app.llm import LLMError, complete_generate_json
 from app.normalize import extract_numbers
-from app.templates import price_not_listed, quote_url
+from app.templates import medical_advice, price_not_listed, quote_url
 from app.verify import (
     COMPOSITE_QUESTION,
     NOT_LISTED,
@@ -56,7 +56,7 @@ Totals: when asked for a combined total, list each component price with its qual
 Not stated is not "no": if the passages do not say whether something is included, say it is not listed. Say an item is excluded only when a passage lists it as excluded or not included. A comparison-page list of what is "often not included" is general, not about ITC.
 Average cost questions: give the average, the price range, and the last verified date when the passage lists them.
 Travel questions (flights, airports, transport): name each airport and any free airport rides or local transportation assistance the passages list, even when the asked item itself is not listed.
-Clinical claims from the pages (safety, effectiveness, colostomy, outcomes): start the sentence with "According to the clinic's page," and never state them as fact.
+Clinical claims from the pages (safety, effectiveness, colostomy, outcomes): start with "According to the clinic's page," and never state them as fact. End with "Please discuss this with your doctor." Do not repeat "safe and effective". Do not say "I can't tell you whether a treatment is safe".
 Medical efficacy claims: attribute to the page ("According to the clinic's page..."). Never state as fact. Never advise.
 When comparing clinics, copy each clinic name exactly as written in the passage.
 Do not mention clinics, prices or treatments not in the passages.
@@ -231,6 +231,42 @@ def hints_for(query: str, catalog: list[dict], unpriced: list[str]) -> str:
 
 
 _INCLUSION_QUESTION = re.compile(r"\b(include|includes|included|cover|covers|covered)\b", re.IGNORECASE)
+
+
+_DOCTOR = "Please discuss this with your doctor."
+_CLINICAL_LEAD = "According to the clinic's page,"
+_SAFE_PHRASE = re.compile(r"\bsafe and effective\b", re.IGNORECASE)
+
+
+def finish_clinical_answer(answer: str) -> str:
+    """Page attribution first, one 'safe and effective', then the doctor sentence. No safety template."""
+    text = answer.strip()
+    template = medical_advice().strip()
+    if text.startswith(template):
+        text = text[len(template) :].strip()
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    kept: list[str] = []
+    seen_safe = False
+    for sentence in sentences:
+        if _SAFE_PHRASE.search(sentence):
+            if seen_safe:
+                continue
+            seen_safe = True
+        if sentence.strip():
+            kept.append(sentence.strip())
+    text = " ".join(kept).strip()
+    if not text:
+        return _DOCTOR
+    if not text.lower().startswith("according to the clinic's page"):
+        if text[0].isalpha() and (len(text) == 1 or text[1].islower()):
+            text = text[0].lower() + text[1:]
+        text = f"{_CLINICAL_LEAD} {text}"
+    if _DOCTOR.lower().rstrip(".") not in text.lower():
+        text = text.rstrip()
+        if text and not text.endswith((".", "!", "?")):
+            text += "."
+        text = f"{text} {_DOCTOR}".strip()
+    return tidy_spacing(text)
 
 
 def polish_answer(answer: str) -> str:

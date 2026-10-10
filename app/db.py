@@ -124,7 +124,7 @@ def questions_today() -> int:
     return int(row["count"])
 
 
-def cache_key(question: str, history: list[dict]) -> str:
+def cache_key(question: str, history: list[dict], *, version: str | None = None) -> str:
     normalized = " ".join(question.lower().split())
     turns = [
         {
@@ -133,8 +133,15 @@ def cache_key(question: str, history: list[dict]) -> str:
         }
         for turn in history
     ]
-    raw = normalized + "\n" + json.dumps(turns, ensure_ascii=False)
+    stamp = version if version is not None else get_settings().cache_version
+    raw = stamp + "\n" + normalized + "\n" + json.dumps(turns, ensure_ascii=False)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def clear_answer_cache() -> int:
+    with connect() as connection:
+        cursor = connection.execute("DELETE FROM answer_cache")
+        return int(cursor.rowcount)
 
 
 def get_cached_answer(key: str) -> dict | None:

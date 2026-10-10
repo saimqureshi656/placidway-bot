@@ -14,8 +14,18 @@ LIMIT = 10
 WINDOW_SECONDS = 60.0
 
 
+_TRUSTED_PROXIES = {"127.0.0.1", "::1"}
+
+
 def client_ip(request: Request) -> str:
-    return request.client.host if request.client else "unknown"
+    """Use the real client from X-Forwarded-For when the peer is the local Caddy proxy."""
+    peer = request.client.host if request.client else ""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if peer in _TRUSTED_PROXIES and forwarded:
+        client = forwarded.split(",")[0].strip()
+        if client:
+            return client
+    return peer or "unknown"
 
 
 def enforce_rate_limit(request: Request) -> None:

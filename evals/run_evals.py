@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import re
 import sys
@@ -17,7 +16,6 @@ from app.normalize import extract_numbers
 
 ROOT = Path(__file__).resolve().parents[1]
 GOLDEN = Path(__file__).parent / "golden.yaml"
-BGE_TOP1 = json.loads((Path(__file__).parent / "bge_top1.json").read_text(encoding="utf-8"))
 RESULTS = ROOT / "test_results.md"
 API = os.environ.get("EVAL_URL", "http://127.0.0.1:8000")
 REQUIRED = [
@@ -225,9 +223,6 @@ def main() -> None:
                 )
             if index < len(cases) - 1:
                 time.sleep(gap_seconds)
-    by_category: dict[str, list[bool]] = {}
-    for row in rows:
-        by_category.setdefault(row["category"], []).append(row["passed"])
     required_rows = [row for row in rows if row["id"] in REQUIRED]
     required_rows.sort(key=lambda row: REQUIRED.index(row["id"]))
     lines = [
@@ -251,42 +246,11 @@ def main() -> None:
         else:
             lines.append("- none")
         lines.append("")
-        lines.append(f"Result: {'pass' if row['passed'] else 'fail'}")
-        if row["reasons"]:
-            lines.append("Reasons: " + "; ".join(row["reasons"]))
-        lines.append(f"Models: {row.get('calls') or 'none'}")
-        retries = row.get("retries") or []
-        lines.append(f"Retries: {len(retries)}" + ("; " + "; ".join(retries) if retries else ""))
-        timings = row.get("timings") or {}
-        if timings:
-            lines.append("Stage ms: " + ", ".join(f"{name}={value}" for name, value in timings.items()))
-        lines.append("")
-    lines.extend(["## Pass rate by category", ""])
-    for category, flags in by_category.items():
-        lines.append(f"- {category}: {sum(flags)}/{len(flags)}")
-    lines.extend(["", "## All cases", "", "| id | pass | intent | latency ms |", "|---|---|---|---|"])
+    lines.extend(["## All cases", "", "| id | pass | intent | latency ms |", "|---|---|---|---|"])
     for row in rows:
         lines.append(
             f"| {row['id']} | {'pass' if row['passed'] else 'fail'} | {row['intent']} | {row['latency_ms']:.0f} |"
         )
-    lines.extend(["", "## Top chunks", ""])
-    changed = []
-    for row in rows:
-        tops = row.get("top_chunks") or []
-        if not tops:
-            lines.append(f"- {row['id']}: none")
-            continue
-        shown = ", ".join(f"{item.get('chunk_id')} ({item.get('score')})" for item in tops)
-        lines.append(f"- {row['id']}: {shown}")
-        previous = BGE_TOP1.get(row["question"])
-        current = tops[0].get("chunk_id")
-        if previous and previous != current:
-            changed.append(f"{row['id']}: {previous} -> {current}")
-    lines.extend(["", "## Top-1 changed vs bge-reranker", ""])
-    if changed:
-        lines.extend(f"- {item}" for item in changed)
-    else:
-        lines.append("- none")
     lines.append("")
     RESULTS.write_text("\n".join(lines), encoding="utf-8")
     print(f"wrote {RESULTS}")
