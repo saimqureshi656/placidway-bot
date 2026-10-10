@@ -28,6 +28,22 @@ _MEDICAL = re.compile(
     r"\b(safe for (?:me|my)|my (?:diabetes|condition)|should i|dosage|diagnos|is (?:it|this) safe|cure|will it work|success rate|survival|is it effective)\b",
     re.IGNORECASE,
 )
+# Paperwork and travel questions mention "should I" or "medical" but are not medical advice.
+_PAPERWORK = re.compile(
+    r"\b(medical records?|what documents|which documents|documents? (?:should|do) i|"
+    r"what (?:medical )?information should i|should i (?:send|bring|provide|submit|share|fly)|"
+    r"fly into|airport)\b",
+    re.IGNORECASE,
+)
+# A personal-condition question the pages may answer, such as "Can I do this if I have a colostomy?"
+_CONDITION_FIT = re.compile(r"\b(?:if i have|if i've had|with my|i have an?)\b", re.IGNORECASE)
+# Only these openers and pronouns carry the previous treatment into a new question.
+_REFERS_BACK = re.compile(
+    r"^\s*(?:and|also|what about|how about|same|y|¿y|y qué|و|ماذا عن)\b"
+    r"|\b(?:it|its|it's|that|this|these|those|they|them|the same|above|eso|esto|ese|este|esa|esta)\b"
+    r"|(?:هذا|هذه|ذلك)",
+    re.IGNORECASE,
+)
 _LEAD = re.compile(r"\b(contact me|call me|email me|free quote|be contacted)\b", re.IGNORECASE)
 _COMPARISON = re.compile(r"\b(cheaper|compare|comparison|versus|vs\.?)\b", re.IGNORECASE)
 _PRICE = re.compile(r"\b(how much|cost|price|priced|\$)\b", re.IGNORECASE)
@@ -39,7 +55,6 @@ _MONEY = re.compile(
     r"(?:\$\s?\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)?\s*(?:usd|dollars))\b",
     re.IGNORECASE,
 )
-_FOLLOWUP = re.compile(r"^\s*(and\b|what about|how about|also\b)\b", re.IGNORECASE)
 _ARABIC = re.compile(r"[\u0600-\u06FF]")
 _SPANISH = re.compile(r"[¿¡]|\b(cuánto|cuesta|tratamiento|incluye)\b", re.IGNORECASE)
 
@@ -81,6 +96,8 @@ def route_rules(message: str) -> Route | None:
         return Route("greeting", numbers)
     if _BOOKING.search(text):
         return Route("booking", numbers)
+    if _PAPERWORK.search(text):
+        return Route("info", numbers)
     if _MEDICAL.search(text):
         return Route("medical_advice", numbers)
     if _OUT_OF_SCOPE.search(text):
@@ -113,13 +130,19 @@ def _blank_rewrite(message: str, *, followup: bool) -> dict:
     }
 
 
+def refers_back(message: str) -> bool:
+    return bool(_REFERS_BACK.search(message.strip()))
+
+
+def asks_condition_fit(message: str) -> bool:
+    return bool(_CONDITION_FIT.search(message))
+
+
 def is_followup(message: str, history: list[dict] | None) -> bool:
+    """A follow-up refers back ("it", "that", "and the...", "what about"). Anything else is a new topic."""
     if not history:
         return False
-    text = message.strip()
-    if _FOLLOWUP.search(text):
-        return True
-    return len(text.split()) <= 8
+    return refers_back(message)
 
 
 def _history_text(history: list[dict]) -> str:
@@ -128,7 +151,7 @@ def _history_text(history: list[dict]) -> str:
 
 def choose_intent(rule_intent: str | None, llm_intent: str, message: str = "") -> str:
     """Agree when both say the same thing. A medical-advice phrase wins. Info and price rules stay put."""
-    if _MEDICAL.search(message or ""):
+    if _MEDICAL.search(message or "") and not _PAPERWORK.search(message or ""):
         return "medical_advice"
     if rule_intent and rule_intent == llm_intent:
         return llm_intent
@@ -174,12 +197,14 @@ def _from_llm(parsed: dict, message: str) -> dict:
 def resolve(message: str, history: list[dict] | None = None) -> tuple[Route, dict]:
     """Always rewrite and classify in one call, then apply template rules."""
     history = history or []
+    followup = is_followup(message, history)
+    # A new topic is rewritten without history, so it cannot inherit the previous treatment.
     parsed = complete_router_json(
         _COMBINED,
-        f"History:\n{_history_text(history)}\n\nLatest:\n{message}",
+        f"History:\n{_history_text(history if followup else [])}\n\nLatest:\n{message}",
     )
     rewritten = _from_llm(parsed, message)
-    rewritten["is_followup"] = bool(rewritten["is_followup"] or is_followup(message, history))
+    rewritten["is_followup"] = followup
     ruled = route_rules(message)
     intent = choose_intent(ruled.intent if ruled else None, rewritten["intent"], message)
     method = "agree" if ruled and ruled.intent == intent else "llm"

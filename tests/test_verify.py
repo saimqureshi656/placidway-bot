@@ -331,3 +331,136 @@ def test_premise_without_topic_uses_starting_price():
     assert "$18,995 USD (starting from)" in correction
     assert "profile/5" in url
     assert "the listed program" not in correction
+
+
+# Entity-price binding and grounding gaps
+
+from app.verify import (  # noqa: E402
+    attribution_reason,
+    composite_reason,
+    destination_gap,
+    exclusion_reason,
+    price_binding_reason,
+    tidy_spacing,
+    unpriced_terms,
+)
+
+PROFILE_LINE = {
+    "chunk_id": "clinic_profile:6:0",
+    "text": "Base Package Price: $18,995 | Cancer Types Treated at ITC: Prostate Cancer Liver & Kidney Cancer",
+}
+CENTER_DETAILS = {
+    "chunk_id": "price_list:7:0",
+    "text": "- Price Range: $18995 - $18995\n- Packages: Alternative Appendix Cancer Treatment Package in Tijuana",
+}
+CATALOG = [
+    {**PRICE, "id": "p_7903_inpatient", "category": "package_program", "program": "In-Patient Program",
+     "duration": "3 Weeks", "price_low": 30000, "price_high": 30000, "qualifier": "", "url": "u7903"},
+    {**PRICE, "id": "p_list_prostate_cancer", "category": "price_list_row", "treatment": "Prostate Cancer",
+     "program": "", "qualifier": ""},
+]
+
+
+def test_unlisted_package_price_is_rejected():
+    reason = price_binding_reason(
+        "How much is the appendix cancer package?",
+        "The appendix cancer package costs $18,995.",
+        [CENTER_DETAILS],
+        CATALOG,
+    )
+    assert "18995" in reason and "appendix" in reason
+    assert unpriced_terms("How much is the appendix cancer package?", CATALOG, [CENTER_DETAILS]) == ["appendix"]
+
+
+def test_profile_line_binds_liver_price():
+    answer = "ITC lists Liver & Kidney Cancer among the cancers it treats. The profile's base package price is $18,995."
+    assert price_binding_reason("Does ITC treat liver cancer and how much?", answer, [PROFILE_LINE], CATALOG) == ""
+    assert unpriced_terms("liver cancer cost", CATALOG, [PROFILE_LINE]) == []
+
+
+def test_programs_are_not_applied_to_other_cancers():
+    reason = price_binding_reason(
+        "Does ITC treat liver cancer and how much?",
+        "The Out-Patient program is $18,995.",
+        [PROFILE_LINE],
+        CATALOG,
+    )
+    assert "Out-Patient and In-Patient" in reason
+    reason = price_binding_reason(
+        "What does ITC charge for prostate cancer?",
+        "The price list shows Prostate Cancer at $18995. A 3-week stay is $30,000.",
+        [PROFILE_LINE],
+        CATALOG,
+    )
+    assert "30000" in reason
+    ok = price_binding_reason(
+        "What does ITC charge for prostate cancer?",
+        "The ITC price list shows Prostate Cancer at $18995.",
+        [PROFILE_LINE],
+        CATALOG,
+    )
+    assert ok == ""
+
+
+def test_program_price_binds_without_a_treatment():
+    answer = "The In-Patient Program is $30,000. LAK is $2,600."
+    assert price_binding_reason("Total for in-patient plus LAK?", answer, [], CATALOG) == ""
+    assert price_binding_reason("in-patient price", "The In-Patient Program is $18,995.", [], CATALOG)
+
+
+def test_composite_total_must_say_not_listed():
+    query = "Total for in-patient plus LAK plus two specialist visits?"
+    assert composite_reason(query, "In-Patient $30,000 and LAK $2,600, so $32,600 total.")
+    assert composite_reason(query, "In-Patient $30,000, LAK $2,600. A combined total is not listed.") == ""
+
+
+def test_not_stated_is_not_excluded():
+    chunk = {"chunk_id": "clinic_profile:6:0", "text": "Standard Inclusions: Local transportation assistance"}
+    assert exclusion_reason("Flights are not included in the price.", [chunk])
+    assert exclusion_reason("Flights are not listed as included.", [chunk]) == ""
+    excluded = {"chunk_id": "package_7903:8:0", "text": "Excluded Services: Ambulance transfers ($950)"}
+    assert exclusion_reason("Ambulance transfers are not included.", [excluded]) == ""
+
+
+def test_clinical_claims_are_attributed():
+    assert attribution_reason("These therapies are safe with a colostomy.")
+    assert attribution_reason("According to the clinic's page, the therapies can be used with a colostomy.") == ""
+
+
+def test_premise_uses_the_program_asked_about():
+    correction, url = premise_correction(["$25,000"], CATALOG, "", "", "In-Patient Program")
+    assert correction.startswith("I can't confirm that.")
+    assert "$30,000 USD" in correction and "3 Weeks" in correction
+    assert url == "u7903"
+
+
+def test_unlisted_destination():
+    corpus = [
+        {"text": "Clinic / Surgeon: Form Recovery & Wellness in Bangkok Thailand | Physiotherapy/Massage"},
+        {"text": "Alternative cancer treatment in Tijuana, Mexico"},
+    ]
+    assert destination_gap("Is Thailand cheaper for cancer treatment?", corpus, []) == ("Thailand", "cancer treatment")
+    assert destination_gap("Is cancer treatment cheaper in Mexico or Thailand?", corpus, []) is None
+
+
+def test_no_space_before_punctuation():
+    assert tidy_spacing("It costs $18,995 . Request a quote , please !") == "It costs $18,995. Request a quote, please!"
+
+
+def test_unpriced_item_answer_quotes_no_price():
+    chunk = {"chunk_id": "price_list:7:0", "text": "- Packages: Alternative Appendix Cancer Treatment Package"}
+    draft = _draft("The price for the appendix cancer package is not listed. The adenocarcinoma package starts from $18,995.")
+    draft["claims"] = [{"text": "x", "chunk_ids": ["1"]}]
+    ok, reason = verify(
+        draft, [chunk, CHUNK], [], clinic_names=CLINICS,
+        query="How much is the appendix cancer package?", catalog=CATALOG + [PRICE], unpriced=["appendix"],
+    )
+    assert ok is False and "do not quote other prices" in reason
+
+
+def test_vague_missing_wording_is_rejected():
+    ok, reason = verify(
+        _draft("The pages do not mention flights."), [CHUNK], [], clinic_names=CLINICS,
+        query="Does the price include flights?",
+    )
+    assert ok is False and "is not listed" in reason

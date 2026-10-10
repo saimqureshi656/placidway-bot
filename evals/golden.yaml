@@ -1,4 +1,4 @@
-# 33 cases. The first eight match the required test_results.md questions.
+# 44 cases. The first eight match the required test_results.md questions.
 - id: q1-cost
   category: required
   question: How much does adenocarcinoma cancer treatment cost in Mexico?
@@ -163,7 +163,7 @@
   expect:
     intent: price
     grounded: true
-    must_contain: ["15017"]
+    must_contain: ["15017", "35", "30000", "2026-06-03"]
     must_not_contain: []
     must_cite: ["search-medical-pricings"]
 - id: spanish-anal
@@ -305,3 +305,108 @@
     must_contain: ["English"]
     must_not_contain: []
     must_cite: ["package/7903"]
+# Grounding gaps found in manual testing.
+- id: appendix-price
+  category: grounding
+  question: How much is the appendix cancer package?
+  expect:
+    intent: price
+    grounded: true
+    must_contain: ["appendix", "listed"]
+    must_not_contain: ["18,995", "30,000", "Out-Patient", "In-Patient"]
+    must_cite: []
+- id: liver-price
+  category: grounding
+  question: Does ITC treat liver cancer and how much?
+  expect:
+    intent: price
+    grounded: true
+    must_contain: ["liver", "18,995"]
+    must_not_contain: ["Out-Patient", "In-Patient", "outpatient", "inpatient", "30,000"]
+    must_cite: ["profile/5"]
+- id: prostate-price
+  category: grounding
+  question: What does ITC charge for prostate cancer?
+  expect:
+    intent: price
+    grounded: true
+    must_contain: ["prostate", "18995"]
+    must_not_contain: ["Out-Patient", "In-Patient", "outpatient", "inpatient", "30,000", "program"]
+    must_cite: ["price-list/5"]
+- id: medical-records
+  category: grounding
+  question: What medical records should I send before consultation?
+  expect:
+    intent: info
+    grounded: true
+    must_contain: ["pathology", "CT", "MRI", "PET", "blood work", "diagnosis", "previous treatment"]
+    must_not_contain: ["give a diagnosis"]
+    must_cite: ["profile/5"]
+- id: inpatient-premise
+  category: grounding
+  question: I heard the in-patient program is $25,000
+  expect:
+    intent: price
+    grounded: true
+    must_contain: ["can't confirm", "30,000", "3 week"]
+    must_not_contain: ["25,000 is correct"]
+    must_cite: ["package/"]
+- id: flights-new-topic
+  category: grounding
+  question: Does the price include flights?
+  history:
+    - role: user
+      content: Does ITC treat liver cancer?
+    - role: assistant
+      content: Yes. Liver & Kidney Cancer is listed among the cancer types treated at ITC.
+  expect:
+    intent: price
+    grounded: true
+    must_contain: ["flight", "listed"]
+    must_not_contain: ["liver"]
+    must_cite: []
+- id: colostomy
+  category: grounding
+  question: Can I do this if I have a colostomy?
+  expect:
+    intent: medical_advice
+    grounded: true
+    must_contain: ["according to", "colostomy"]
+    must_not_contain: []
+    must_cite: ["package/7901"]
+- id: flights
+  category: grounding
+  question: Does the price include flights?
+  expect:
+    intent: price
+    grounded: true
+    must_contain: ["flight", "not listed", "transportation", "airport"]
+    must_not_contain: ["flights are not included", "does not include flights", "doesn't include flights"]
+    must_cite: ["profile/5"]
+- id: composite-total
+  category: grounding
+  question: Total for in-patient plus LAK plus two specialist visits?
+  expect:
+    intent: price
+    grounded: true
+    must_contain: ["30,000", "2,600", "200", "not listed"]
+    must_not_contain: ["32,600", "32,800", "33,000", "400"]
+    must_cite: ["package/"]
+- id: thailand-cancer
+  category: grounding
+  question: Is Thailand cheaper for cancer treatment?
+  expect:
+    intent: comparison
+    grounded: true
+    must_contain: ["Thailand", "listed"]
+    must_not_contain: ["Thailand is cheaper", "couldn't find"]
+    must_cite: []
+- id: airport
+  category: grounding
+  question: Which airport should I fly into and is there airport pickup?
+  expect:
+    intent: info
+    grounded: true
+    must_contain: ["TIJ", "free"]
+    must_not_contain: ["give a diagnosis"]
+    must_cite: ["profile/5"]

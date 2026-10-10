@@ -15,13 +15,14 @@ from app import db
 from app.config import ROOT, get_settings
 from app.diagnostics import log_turn
 from app.generate import generate_checked
-from app.verify import premise_correction
+from app.verify import COUNTRIES, destination_gap, format_price, premise_correction, programs_in
 from app.llm import LLMError, llm_calls, start_llm_log, warm_http
 from app.retrieve import get_retriever
-from app.router import resolve
+from app.router import asks_condition_fit, resolve
 from app.security import enforce_admin, enforce_rate_limit
 from app.templates import (
     booking,
+    destination_not_listed,
     fallback,
     friendly_error,
     greeting,
@@ -166,6 +167,41 @@ def _clinic(query: str, entities: dict, history: list[Turn]) -> str:
     if "itc" in lowered or "immunity therapy" in lowered:
         return "ITC Immunity Therapy Center"
     return ""
+
+
+def _program(message: str) -> str:
+    """The program the user's own words name, for the premise check. Both or neither -> ""."""
+    named = programs_in(message)
+    return named[0] if len(named) == 1 else ""
+
+
+CONDITION_FIT = (
+    "The user asks whether the program fits their own condition. Do not advise. "
+    "Report only what the clinic's page says, starting with \"According to the clinic's page,\"."
+)
+
+
+def _destination_answer(message: str, rewritten: str, routed) -> tuple[str, str] | None:
+    """A question about a country the pages do not list for that treatment gets a direct answer."""
+    if routed.intent not in {"price", "comparison", "info"} or routed.user_numbers:
+        return None
+    retriever = get_retriever()
+    # Prefer the user's own words, so a country the rewrite added does not hide the gap.
+    query = message if any(country in message.lower() for country in COUNTRIES) else rewritten
+    gap = destination_gap(query, retriever.chunks, retriever.price_records)
+    if gap is None:
+        return None
+    country, subject = gap
+    listed, url = "", ""
+    if "cancer" in subject:
+        start = next((r for r in retriever.price_records if r.get("id") == "p_profile_starting"), None)
+        if start:
+            listed = (
+                "The pages list alternative cancer treatment at ITC Immunity Therapy Center in Tijuana, "
+                f"Mexico: {format_price(start)}."
+            )
+            url = start.get("url") or ""
+    return destination_not_listed(country, subject, listed), url
 
 
 def _index_status() -> dict:
@@ -360,22 +396,27 @@ def chat(body: ChatRequest, request: Request) -> dict:
         answer = out_of_scope()
         grounded = False
         answer_status = ""
-    elif routed.intent == "medical_advice":
+    elif routed.intent == "medical_advice" and not asks_condition_fit(body.message):
         answer = medical_advice()
+    elif destination := _destination_answer(body.message, rewritten, routed):
+        answer, premise_url = destination
+        answer_status = "not_listed"
     else:
         try:
-            result = get_retriever().search(rewritten, intent=routed.intent, entities=entities)
+            retriever = get_retriever()
+            # Only a follow-up ("it", "that", "what about") inherits the treatment from history.
+            prior = body.history if rewritten_obj.get("is_followup") else []
+            result = retriever.search(rewritten, intent=routed.intent, entities=entities)
             timings.update(result.timings)
             hits = [hit.__dict__ for hit in result.hits]
             used_prices = list(result.prices)
-            topic = _treatment(rewritten, entities, body.history)
-            clinic_name = _clinic(rewritten, entities, body.history)
+            topic = _treatment(rewritten, entities, prior)
+            clinic_name = _clinic(rewritten, entities, prior)
+            program = _program(body.message)
             correction = None
             if routed.user_numbers:
-                pool = [
-                    record for record in get_retriever().price_records if record.get("answerable", True)
-                ]
-                correction = premise_correction(routed.user_numbers, pool, topic, clinic_name)
+                pool = [record for record in retriever.price_records if record.get("answerable", True)]
+                correction = premise_correction(routed.user_numbers, pool, topic, clinic_name, program)
             if correction:
                 answer, premise_url = correction
                 answer_status = "partial"
@@ -397,7 +438,11 @@ def chat(body: ChatRequest, request: Request) -> dict:
                     user_numbers=routed.user_numbers,
                     treatment=topic,
                     clinic=clinic_name,
+                    program=program,
                     clinic_names=_clinic_names(),
+                    catalog=retriever.price_records,
+                    corpus=retriever.chunks,
+                    instruction=CONDITION_FIT if routed.intent == "medical_advice" else "",
                 )
                 timings.update(stage_timings)
                 retries = list(stage_timings.get("retries") or [])

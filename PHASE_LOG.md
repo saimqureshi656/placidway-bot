@@ -399,3 +399,29 @@ Sources are the cited passages plus the URL of every cited price record. A quest
 A treatment cost question must list every Out-Patient and In-Patient price with its duration. The verifier retries when one is missing. Qualifiers are accepted in English, Spanish, and Arabic.
 
 Required run: **9/9**. Full run: **33/33**, p50 2718 ms, p95 4012 ms. Categories: required 9/9, price 11/11, info 3/3, comparison 3/3, language 2/2, safety 3/3, chat 2/2. Unit tests: `pytest tests/test_verify.py tests/test_retrieve.py` — 29 passed.
+
+## Entity-price binding and grounding gaps
+
+Files changed: `app/verify.py`, `app/generate.py`, `app/router.py`, `app/retrieve.py`, `app/main.py`, `app/normalize.py`, `app/templates.py`, `evals/golden.yaml`, `evals/run_evals.py`, `tests/test_verify.py`, `tests/test_router.py`.
+
+Manual testing found invented facts. Each case is now in `golden.yaml` (category `grounding`).
+
+- Entity-price binding (`verify.price_binding_reason`): every money amount in the answer is bound to the treatment or program named in its sentence, or to the question's treatment if the sentence names none. It must match a price record for that entity, or one passage line that names the entity and the amount together. Line level matters: the price-list "Center details" chunk has `$18995` and "Appendix" on different lines, so appendix has no price; the profile line `Base Package Price: $18,995 | Cancer Types Treated: ... Liver & Kidney Cancer` links liver to $18,995.
+- A treatment with no record and no such line is unpriced (`unpriced_terms`). A price question about it must say "not listed", quote no price, and gets `answer_status` not_listed. If the model fails twice, the reply is the `price_not_listed` template.
+- Out-Patient and In-Patient are rejected for any treatment without `package_program` records (only adenocarcinoma, adrenal, anal).
+- Price-list cancers (breast, prostate, lung, pancreatic, colorectal, colon) now receive their price-list record. The comparison-page average is attached only to average, range, abroad, or alternative-medicine questions.
+- Named programs and procedures without a package (in-patient, LAK, specialist, ...) receive one price record each.
+- Router: medical records, documents, "should I send/fly", and airport questions are `info`. A personal-condition question ("if I have a colostomy") gets the medical sentence plus an attributed page answer.
+- Premise: a stated price is compared with the program the user named. "$25,000 in-patient" is corrected to $30,000 for 3 weeks with the package URL.
+- Topic carryover: history is sent to the rewrite only when the message refers back (it, that, this, and..., what about). Otherwise it is a new topic and the treatment is not inherited.
+- Clinical words (safe, effective, colostomy, outcome, cure) require "According to the clinic's page".
+- Saying something is excluded requires a passage that lists it as excluded. The comparison page's "Often Not Included" list does not count. Vague "do not mention" wording is retried as "not listed".
+- Composite totals: a "plus/combined" question must list components and say a combined total is not listed. Computed sums already fail the number check.
+- A country with no line linking it to the asked treatment gets a direct "not listed" answer with the ITC starting price, instead of the generic fallback.
+- Travel questions run a second retrieval with travel wording. A not-listed travel answer gets the listed transport help (local transportation assistance, free airport rides) with a citation.
+- Average-cost answers get the range and last-verified date. Spaces before punctuation are removed. "approximate" and "approx" count as the approximately qualifier. Inline `[n]` and `[Pn]` markers count as citations.
+- The eval checks every answer for a space before punctuation, treats "isn't" as "is not", prints `[i/N]` per question, and takes `--gap` (6 s keeps the full run under 10 minutes).
+
+Unit tests: `pytest tests` — 58 passed.
+
+Required run: **9/9**. Full run: **44/44**, p50 1982 ms, p95 3439 ms. Categories: required 9/9, price 11/11, info 3/3, comparison 3/3, language 2/2, safety 3/3, chat 2/2, grounding 11/11.

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from app.normalize import extract_numbers
+from app.normalize import extract_money, extract_numbers
 from app.templates import fallback, quote_url
 from ingest.urls import ALLOWLIST
 
@@ -128,6 +128,8 @@ _QUALIFIER_ALIASES = {
     ),
     "approximately": (
         "approximately",
+        "approximate",
+        "approx",
         "about",
         "aproximadamente",
         "حوالي",
@@ -138,8 +140,13 @@ _QUALIFIER_ALIASES = {
 _WEEK_WORDS = ("week", "semana", "اسبوع", "اسابيع")
 
 
+def tidy_spacing(text: str) -> str:
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return re.sub(r"[ \t]+([.,;:!?؟،])(?=\s|$)", r"\1", text).strip()
+
+
 def strip_citations(answer: str) -> str:
-    return re.sub(r"[ \t]{2,}", " ", _CITATION.sub("", answer)).strip()
+    return tidy_spacing(_CITATION.sub("", answer))
 
 
 def _answer_has_amount(answer: str, amount: int) -> bool:
@@ -201,6 +208,234 @@ def missing_program_prices(query: str, answer: str, prices: list[dict]) -> str:
     return ""
 
 
+# Entity-price binding. A price belongs to the treatment or program it is written next to.
+# It must come from a price record for that entity, or from one passage line that names
+# the entity and the amount together.
+TREATMENT_TERMS = (
+    "adenocarcinoma",
+    "adrenal",
+    "anal",
+    "appendix",
+    "rectal",
+    "colorectal",
+    "colon",
+    "breast",
+    "prostate",
+    "lung",
+    "pancreatic",
+    "ovarian",
+    "cervical",
+    "liver",
+    "kidney",
+    "leukemia",
+    "lymphoma",
+    "melanoma",
+    "skin",
+    "brain",
+    "stomach",
+    "esophageal",
+    "sarcoma",
+    "bone",
+    "bladder",
+    "ozone",
+    "acupuncture",
+    "panchakarma",
+    "stem cell",
+    "live cell",
+    "naturopathic",
+)
+_NON_CANCER = {"ozone", "acupuncture", "panchakarma", "stem cell", "live cell", "naturopathic"}
+PROGRAM_TERMS = {"In-Patient Program": r"\bin[- ]?patient\b", "Out-Patient Program": r"\bout[- ]?patient\b"}
+_PROGRAM_MENTION = re.compile(r"\b(?:in|out)[- ]?patient\b", re.IGNORECASE)
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?؟])\s+|\n+")
+COMPOSITE_QUESTION = re.compile(r"\bplus\b|\s\+\s|\bcombined\b|\baltogether\b|\badd(?:s|ed)? up\b", re.IGNORECASE)
+_VAGUE_MISSING = re.compile(
+    r"\bdo(?:es)? not (?:list|state|mention|specify)\b|\bnot (?:mentioned|specified|stated)\b|\bno mention\b",
+    re.IGNORECASE,
+)
+NOT_LISTED = re.compile(r"\b(?:not listed|isn't listed|aren't listed|is not listed|are not listed)\b", re.IGNORECASE)
+
+
+def terms_in(text: str) -> list[str]:
+    lowered = text.lower()
+    return [term for term in TREATMENT_TERMS if re.search(rf"\b{re.escape(term)}\b", lowered)]
+
+
+def programs_in(text: str) -> list[str]:
+    return [name for name, pattern in PROGRAM_TERMS.items() if re.search(pattern, text, re.IGNORECASE)]
+
+
+def subject_name(term: str) -> str:
+    return term if term in _NON_CANCER else f"{term} cancer"
+
+
+def is_cost_question(query: str) -> bool:
+    return bool(re.search(r"\b(how much|cost|costs|price|priced|charge|charges|fee|fees)\b", query, re.IGNORECASE))
+
+
+def _record_has_term(record: dict, term: str) -> bool:
+    return re.search(rf"\b{re.escape(term)}\b", str(record.get("treatment") or "").lower()) is not None
+
+
+def _record_amounts(record: dict) -> set[int]:
+    return {int(record[key]) for key in ("price_low", "price_high") if record.get(key) is not None}
+
+
+def _lines(chunks: list[dict]) -> list[str]:
+    return [line for chunk in chunks for line in (chunk.get("text") or "").splitlines() if line.strip()]
+
+
+def _line_links(lines: list[str], term: str, amount: int | None = None) -> bool:
+    for line in lines:
+        if not re.search(rf"\b{re.escape(term)}\b", line, re.IGNORECASE):
+            continue
+        money = extract_money(line)
+        if money and (amount is None or amount in money):
+            return True
+    return False
+
+
+def has_programs(term: str, catalog: list[dict]) -> bool:
+    return any(
+        record.get("category") == "package_program" and _record_has_term(record, term) for record in catalog
+    )
+
+
+def unpriced_terms(query: str, catalog: list[dict], corpus: list[dict]) -> list[str]:
+    """Treatments the question names that have no price record and no passage line with a price."""
+    lines = _lines(corpus)
+    answerable = [record for record in catalog if record.get("answerable", True)]
+    return [
+        term
+        for term in terms_in(query)
+        if not any(_record_has_term(record, term) for record in answerable) and not _line_links(lines, term)
+    ]
+
+
+def _bound(amount: int, treatments: list[str], programs: list[str], catalog: list[dict], lines: list[str]) -> bool:
+    for record in catalog:
+        if not record.get("answerable", True) or amount not in _record_amounts(record):
+            continue
+        if treatments and not any(_record_has_term(record, term) for term in treatments):
+            continue
+        if programs and str(record.get("program") or "") not in programs:
+            continue
+        return True
+    return bool(treatments) and any(_line_links(lines, term, amount) for term in treatments)
+
+
+def price_binding_reason(query: str, answer: str, chunks: list[dict], catalog: list[dict]) -> str:
+    topic = terms_in(query)
+    for term in topic:
+        if _PROGRAM_MENTION.search(answer) and not has_programs(term, catalog):
+            return (
+                f"Out-Patient and In-Patient programs are listed only for the adenocarcinoma, adrenal, "
+                f"and anal packages; do not mention them for {subject_name(term)}"
+            )
+    lines = _lines(chunks)
+    for sentence in _SENTENCE_SPLIT.split(answer):
+        amounts = extract_money(sentence)
+        if not amounts:
+            continue
+        treatments = terms_in(sentence) or topic
+        programs = programs_in(sentence)
+        if not treatments and not programs:
+            continue
+        for amount in amounts:
+            if not _bound(amount, treatments, programs, catalog, lines):
+                names = ", ".join(subject_name(term) for term in treatments) or ", ".join(programs)
+                return f"price {amount} is not listed for {names}; quote only a price stated for that item, or say it is not listed"
+    return ""
+
+
+def composite_reason(query: str, answer: str) -> str:
+    if COMPOSITE_QUESTION.search(query) and not NOT_LISTED.search(answer):
+        return "list each component price and say a combined total is not listed; do not add prices"
+    return ""
+
+
+_NEGATIVE_INCLUSION = re.compile(
+    r"\b(?:not included|isn't included|aren't included|does not include|doesn't include|do not include|"
+    r"don't include|excluded|excludes|not covered|isn't covered|aren't covered)\b",
+    re.IGNORECASE,
+)
+_EXCLUSION_MARKER = re.compile(
+    r"not included|excluded|exclusion|additional cost|not covered|charged separately", re.IGNORECASE
+)
+_PLAIN_WORDS = {
+    "included", "include", "includes", "price", "prices", "package", "program", "treatment", "listed",
+    "pages", "excluded", "excludes", "covered", "which", "there", "their", "these", "those", "about",
+    "cancer", "alternative", "clinic", "costs", "under", "would", "other", "items",
+}
+
+
+def exclusion_reason(answer: str, chunks: list[dict]) -> str:
+    """Saying something is excluded needs a passage that lists it as excluded.
+    The comparison page's "Often Not Included" list is general and does not count."""
+    marked = [
+        chunk.get("text") or ""
+        for chunk in chunks
+        if _EXCLUSION_MARKER.search(chunk.get("text") or "")
+        and "often not included" not in (chunk.get("text") or "").lower()
+    ]
+    for sentence in _SENTENCE_SPLIT.split(answer):
+        if not _NEGATIVE_INCLUSION.search(sentence) or NOT_LISTED.search(sentence):
+            continue
+        words = {word for word in re.findall(r"[a-z]{5,}", sentence.lower()) if word not in _PLAIN_WORDS}
+        if not any(any(word in text.lower() for word in words) for text in marked):
+            return "the pages do not say this is excluded; say it is not listed instead"
+    return ""
+
+
+_CLINICAL = re.compile(r"\b(safe|safely|safety|effective|effectiveness|efficacy|colostomy|outcomes?|cures?|cured)\b", re.IGNORECASE)
+_ATTRIBUTED = re.compile(
+    r"according to|the clinic's page|the page (?:says|states)|states that|según|de acuerdo con|وفق|حسب",
+    re.IGNORECASE,
+)
+
+
+def attribution_reason(answer: str) -> str:
+    if _CLINICAL.search(answer) and not _ATTRIBUTED.search(answer):
+        return "attribute clinical claims: start with \"According to the clinic's page,\""
+    return ""
+
+
+COUNTRIES = (
+    "thailand", "turkey", "mexico", "croatia", "india", "georgia", "spain", "colombia", "costa rica",
+    "germany", "south korea", "korea", "brazil", "canada", "panama", "poland", "hungary", "dubai",
+    "malaysia", "singapore", "philippines", "vietnam", "greece", "cyprus", "jordan", "egypt", "peru",
+    "argentina", "dominican republic", "japan", "china", "switzerland", "italy", "portugal", "france",
+    "united kingdom", "saudi arabia", "pakistan", "indonesia", "cuba", "ecuador", "chile",
+)
+
+
+def destination_gap(query: str, corpus: list[dict], catalog: list[dict]) -> tuple[str, str] | None:
+    """(country, subject) when every country the question names is unlisted for its treatment."""
+    lowered = query.lower()
+    countries = [country for country in COUNTRIES if re.search(rf"\b{country}\b", lowered)]
+    topic = terms_in(query)
+    subjects = topic or (["cancer"] if re.search(r"\bcancer\b", lowered) else [])
+    if not countries or not subjects:
+        return None
+    # Country and treatment must share one line or one clinic-table row, not just one chunk.
+    texts = [
+        segment.lower()
+        for chunk in corpus
+        for segment in re.split(r"\n|(?=Clinic / Surgeon:)", chunk.get("text") or "")
+    ]
+    texts += [
+        f"{record.get('treatment') or ''} {record.get('location') or ''} {record.get('raw_text') or ''}".lower()
+        for record in catalog
+    ]
+    for country in countries:
+        if any(country in text and any(re.search(rf"\b{s}\b", text) for s in subjects) for text in texts):
+            return None
+    if not topic:
+        return countries[0].title(), "cancer treatment"
+    subject = subject_name(topic[0])
+    return countries[0].title(), subject if topic[0] in _NON_CANCER else f"{subject} treatment"
+
+
 def verify(
     draft: dict,
     chunks: list[dict],
@@ -208,6 +443,8 @@ def verify(
     *,
     clinic_names: list[str] | None = None,
     query: str = "",
+    catalog: list[dict] | None = None,
+    unpriced: list[str] | None = None,
 ) -> tuple[bool, str]:
     status = str(draft.get("answer_status") or "")
     if status not in {"full", "partial", "not_listed"}:
@@ -249,7 +486,7 @@ def verify(
                 cited_prices.append(int(value))
         claim["chunk_ids"] = resolved
     draft["cited_price_indexes"] = cited_prices
-    if status == "not_listed" and not cited:
+    if status == "not_listed" and not cited and not cited_prices:
         return False, "not_listed answer must cite chunk ids"
     allowed_numbers = source_numbers(chunks, prices)
     for number in extract_numbers(answer):
@@ -275,6 +512,22 @@ def verify(
     program_reason = missing_program_prices(query, answer, prices)
     if program_reason:
         return False, program_reason
+    for reason in (
+        price_binding_reason(query, answer, chunks, catalog if catalog is not None else prices),
+        composite_reason(query, answer),
+        exclusion_reason(answer, chunks),
+        attribution_reason(answer),
+    ):
+        if reason:
+            return False, reason
+    if _VAGUE_MISSING.search(answer) and not NOT_LISTED.search(answer):
+        return False, 'when the pages do not state something, write that it "is not listed"'
+    if unpriced and is_cost_question(query):
+        if not NOT_LISTED.search(answer):
+            return False, f"the price for {subject_name(unpriced[0])} is not listed; say so"
+        if extract_money(answer):
+            return False, f"the price for {subject_name(unpriced[0])} is not listed; do not quote other prices"
+        draft["answer_status"] = "not_listed"
     return True, ""
 
 
@@ -292,10 +545,15 @@ def format_price(record: dict) -> str:
     return shown
 
 
-def add_related_facts(answer: str, chunks: list[dict]) -> str:
-    """not_listed replies must name the related program length and follow-up when the pages have them."""
-    blob = " ".join((chunk.get("text") or "") for chunk in chunks).lower()
+def add_related_facts(answer: str, chunks: list[dict], query: str = "") -> str:
+    """not_listed replies must name the related program length and follow-up when the pages have them.
+    Price questions skip this: a program length must not be attached to an unlisted item."""
     text = answer.strip()
+    if is_cost_question(query):
+        if quote_url() not in text:
+            text = f"{text} Request a free quote: {quote_url()}"
+        return text.strip()
+    blob = " ".join((chunk.get("text") or "") for chunk in chunks).lower()
     lowered = text.lower()
     if any(phrase in blob for phrase in ("3 week", "3 weeks", "three week", "three weeks")) and "week" not in lowered:
         text = f"{text} The listed program duration is 3 weeks."
@@ -369,12 +627,33 @@ def premise_correction(
     prices: list[dict],
     treatment: str,
     clinic: str = "",
+    program: str = "",
 ) -> tuple[str, str] | None:
+    """Compare a stated price with the item asked about: the program if one is named, else the treatment."""
     if not user_numbers:
         return None
     claimed = set(extract_numbers(" ".join(user_numbers)))
     if not claimed:
         return None
+    if program:
+        pool = _topic_records(prices, treatment, clinic) if treatment.strip() else prices
+        topic = [
+            record
+            for record in pool
+            if record.get("answerable", True) and str(record.get("program") or "").lower() == program.lower()
+        ]
+        if topic:
+            listed = set().union(*(_record_amounts(record) for record in topic))
+            if claimed & listed:
+                return None
+            record = topic[0]
+            duration = f" ({record['duration']})" if record.get("duration") else ""
+            where = f" of the {treatment}" if treatment.strip() else ""
+            return (
+                f"I can't confirm that. Our page lists {format_price(record)} for the "
+                f"{record.get('program')}{duration}{where}.",
+                record.get("url") or "",
+            )
     topic = _topic_records(prices, treatment, clinic)
     if not treatment.strip() and not clinic.strip():
         return _no_topic(user_numbers, prices)

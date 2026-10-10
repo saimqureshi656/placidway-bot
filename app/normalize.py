@@ -58,6 +58,16 @@ def parse_amount(token: str) -> int | None:
     return None
 
 
+def extract_money(text: str) -> list[int]:
+    """Amounts written as money: $ or USD, or with a thousands separator."""
+    amounts = []
+    for match in _TOKEN.finditer(fold_digits(text)):
+        amount = parse_amount(match.group(0))
+        if amount is not None:
+            amounts.append(amount)
+    return amounts
+
+
 def extract_numbers(text: str) -> list[int]:
     folded = fold_digits(text)
     numbers: list[int] = []

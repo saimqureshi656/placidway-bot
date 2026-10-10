@@ -51,6 +51,13 @@ def price_not_listed(subject: str) -> str:
     )
 
 
+def destination_not_listed(country: str, subject: str, listed: str = "") -> str:
+    text = f"{country} isn't listed for {subject} in the PlacidWay pages I have."
+    if listed:
+        text += f" {listed}"
+    return f"{text} Request a free quote: {quote_url()}"
+
+
 def unavailable() -> str:
     return (
         "I'm temporarily unavailable. Please try again in a moment. "

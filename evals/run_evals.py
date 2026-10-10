@@ -52,6 +52,8 @@ PRIOR_HISTORY = {"q4-recovery": "q3-included", "q8-premise": "q1-cost"}
 
 
 def _fold_numbers(text: str) -> str:
+    """Number words become digits, and "isn't" becomes "is not", so wording variants compare equal."""
+    text = re.sub(r"\b(is|are|does|do)n['’]t\b", r"\1 not", text, flags=re.IGNORECASE)
     return re.sub(
         r"\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b",
         lambda match: _NUMBER_WORDS[match.group(0).lower()],
@@ -93,12 +95,17 @@ def _history(case: dict, produced: dict[str, dict]) -> list[dict]:
     return list(case.get("history") or [])
 
 
+_SPACE_BEFORE_PUNCT = re.compile(r"\s[.,;:!?](?:\s|$)")
+
+
 def check(case: dict, payload: dict) -> tuple[bool, list[str]]:
     if case["id"] == "injection":
         return _injection_ok(payload)
     expect = case["expect"]
     answer = payload.get("answer") or ""
     reasons = []
+    if _SPACE_BEFORE_PUNCT.search(answer):
+        reasons.append("space before punctuation")
     if "grounded" in expect and bool(payload.get("grounded")) != bool(expect["grounded"]):
         reasons.append(f"grounded {payload.get('grounded')} != {expect['grounded']}")
     for needle in expect.get("must_contain") or []:
@@ -149,6 +156,7 @@ def _format_calls(payload: dict) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--required", action="store_true", help="Run only the 9 required questions")
+    parser.add_argument("--gap", type=float, default=8, help="Seconds between questions (API allows 10/min)")
     args = parser.parse_args()
     cases = yaml.safe_load(GOLDEN.read_text(encoding="utf-8"))
     if args.required:
@@ -157,7 +165,7 @@ def main() -> None:
     rows = []
     latencies = []
     produced: dict[str, dict] = {}
-    gap_seconds = 8 if args.required else 8
+    gap_seconds = args.gap
     with httpx.Client(timeout=180) as client:
         for index, case in enumerate(cases):
             started = time.perf_counter()
@@ -206,13 +214,13 @@ def main() -> None:
             debug = payload.get("debug") or {}
             if not passed:
                 print(
-                    f"FAIL {case['id']} {latency_ms:.0f}ms {reasons} "
+                    f"[{index + 1}/{len(cases)}] FAIL {case['id']} {latency_ms:.0f}ms {reasons} "
                     f"status={debug.get('verifier_status')} reason={debug.get('verifier_reason')} "
                     f"timings={debug.get('timings')} retries={debug.get('retries')}"
                 )
             else:
                 print(
-                    f"PASS {case['id']} {latency_ms:.0f}ms timings={debug.get('timings')} "
+                    f"[{index + 1}/{len(cases)}] PASS {case['id']} {latency_ms:.0f}ms timings={debug.get('timings')} "
                     f"calls={_format_calls(payload)} retries={debug.get('retries')}"
                 )
             if index < len(cases) - 1:

@@ -38,6 +38,25 @@ TREATMENT_TERMS = (
     "live cell",
 )
 PACKAGE_TERMS = ("adenocarcinoma", "adrenal", "anal")
+# Cancers with their own row on the ITC price list. Used only to pick price records.
+PRICE_LIST_TERMS = ("breast", "prostate", "lung", "pancreatic", "colorectal", "colon")
+# Package programs and procedures, as (query pattern, text in the record's program name).
+PACKAGE_ITEMS = (
+    (r"\bin[- ]?patient\b", "in-patient program"),
+    (r"\bout[- ]?patient\b", "out-patient program"),
+    (r"\blak\b|killer cells", "(lak)"),
+    (r"\bspecialist", "specialist"),
+    (r"\bblood\b|transfusion", "blood products"),
+    (r"\bambulance|\bemergency", "emergency services"),
+    (r"\bct\b|\bimaging\b", "additional imaging"),
+    (r"intratumoral", "intratumoral"),
+    (r"\bmca\b|mononuclear", "mononuclear"),
+    (r"antibody", "antibody"),
+    (r"ethanol|ablation", "ethanol"),
+)
+# Travel questions use plain words the reranker scores low, so a second search adds the travel wording.
+_TRAVEL = re.compile(r"\b(flights?|fly|flying|airports?|travel\w*|transport\w*|pick-?up|shuttle|border)\b", re.IGNORECASE)
+TRAVEL_QUERY = "Does the ITC treatment price include travel: local transportation assistance, free airport rides?"
 _PRICE_LIST_QUERY = ("price list", "pricelist", "all prices", "list of prices")
 COUNTRY_TERMS = ("turkey", "mexico", "thailand", "croatia", "georgia", "india")
 
@@ -115,6 +134,8 @@ class Retriever:
         ]
         flagged = [index for index in ranked if index not in unflagged]
         reranked = self._rerank(query, (unflagged + flagged)[:RERANK_POOL])
+        if _TRAVEL.search(query):
+            reranked = self._merge(reranked, self._travel_hits())
         rerank_ms = int((time.perf_counter() - rerank_started) * 1000)
         hits = reranked[: self.top_k]
         query_text = _query_text(query, entities)
@@ -137,6 +158,18 @@ class Retriever:
             below_threshold=best < self.threshold,
             timings={"retrieve_ms": retrieve_ms, "rerank_ms": rerank_ms, "top_chunks": top_chunks},
         )
+
+    def _travel_hits(self) -> list[Hit]:
+        fused = self._rrf(self._bm25_top(TRAVEL_QUERY), self._dense_top(TRAVEL_QUERY))
+        ranked = sorted(fused, key=fused.get, reverse=True)[:RERANK_POOL]
+        return self._rerank(TRAVEL_QUERY, ranked)
+
+    def _merge(self, first: list[Hit], second: list[Hit]) -> list[Hit]:
+        best: dict[str, Hit] = {}
+        for hit in first + second:
+            if hit.chunk_id not in best or hit.score > best[hit.chunk_id].score:
+                best[hit.chunk_id] = hit
+        return sorted(best.values(), key=lambda hit: hit.score, reverse=True)
 
     def _bm25_top(self, query: str) -> list[int]:
         scores = self.bm25.get_scores(tokenize(query))
@@ -267,16 +300,30 @@ class Retriever:
         if self.chunks:
             self._rerank("warmup", [0])
 
+    def _package_items(self, query_l: str) -> list[dict]:
+        """Programs and procedures named without a package. Their prices are the same on all three
+        package pages, so one record per item is enough."""
+        wanted = [label for pattern, label in PACKAGE_ITEMS if re.search(pattern, query_l)]
+        found: dict[str, dict] = {}
+        for record in self.price_records:
+            program = str(record.get("program") or "").lower()
+            if record.get("category") not in {"package_program", "optional_procedure", "exclusion_approx"}:
+                continue
+            for label in wanted:
+                if label in program and label not in found:
+                    found[label] = record
+        return list(found.values())
+
     def lookup_prices(self, query: str, entities: dict | None = None) -> list[dict]:
         entities = entities or {}
         query_l = _query_text(query, entities)
-        treatments = _named_terms(query_l)
+        treatments = _named_terms(query_l) + [term for term in PRICE_LIST_TERMS if _term_in(query_l, term)]
         entity_treatment = str(entities.get("treatment") or "").lower().strip()
         if entity_treatment and entity_treatment not in treatments:
             treatments.append(entity_treatment)
         package_terms = _package_terms(query_l)
         wants_list = _wants_price_list(query_l)
-        matched = []
+        matched = [] if package_terms else self._package_items(query_l)
         for record in self.price_records:
             if not record.get("answerable", True):
                 continue
@@ -296,8 +343,9 @@ class Retriever:
                 if any(_term_in(blob, term) for term in treatments):
                     matched.append(record)
                 continue
+            # The comparison-page average applies to alternative medicine abroad, not to a named cancer.
             if category == "comparison_summary" and any(
-                word in query_l for word in ("average", "range", "how much", "cost")
+                word in query_l for word in ("average", "range", "abroad", "alternative medicine")
             ):
                 matched.append(record)
         return matched

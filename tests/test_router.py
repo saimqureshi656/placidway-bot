@@ -54,3 +54,17 @@ def test_gen_bucket_skips_when_empty():
     bucket = TokenBucket(rate=1, per_seconds=60)
     assert bucket.take() is True
     assert bucket.take() is False
+
+
+def test_paperwork_is_info_not_medical():
+    assert route("What medical records should I send before consultation?").intent == "info"
+    assert route("Which airport should I fly into?").intent == "info"
+    assert choose_intent("info", "medical_advice", "What medical records should I send?") == "info"
+
+
+def test_new_topic_does_not_inherit_history():
+    history = [{"role": "user", "content": "Does ITC treat liver cancer?"}]
+    assert is_followup("Does the price include flights?", history) is False
+    assert is_followup("Does it include flights?", history) is True
+    assert is_followup("And what about recovery time?", history) is True
+    assert is_followup("What about in Turkey?", history) is True
