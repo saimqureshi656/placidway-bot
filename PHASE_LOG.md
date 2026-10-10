@@ -306,3 +306,34 @@ Groq fallback run, after `CEREBRAS_API_KEY` was set to `invalid`: **8/9**, p50 3
 | q8-premise | pass | 1358 | 319 | 20 | 737 |  |
 
 q4 failed again: the answer said the treatment period is three weeks and did not say "not listed" or mention the follow-up month. The key is restored. Stopped here.
+
+## Recovery guard and full eval
+
+Files changed: `app/verify.py`, `app/generate.py`, `app/main.py`, `app/retrieve.py`, `evals/run_evals.py`, `evals/bge_top1.json`, `tests/test_verify.py`.
+
+The prompt now says program duration, stay length, and follow-up timing are not recovery time. For a recovery, downtime, or "how long until normal" question, if no retrieved chunk states a recovery time, period, or downtime with a duration, the answer must say recovery time is not listed and must not attach a duration to the word recovery. The same rule covers success rate, survival, and side-effect duration: they are not inferred. A violation is rejected and retried. Unit tests cover a rejected "recovery period is three weeks" and an accepted "recovery time is not listed" answer.
+
+Every chat debug payload includes the top 3 chunk ids and rerank scores. `evals/bge_top1.json` is the first logged top chunk for each question from the earlier `bge-reranker-base` run.
+
+Required run: **9/9**. q4 said recovery time is not listed, then the three-week program and the three-month follow-up.
+
+Full run: **27/32**, p50 1873 ms, p95 3622 ms.
+
+| category | pass |
+|---|---|
+| required | 9/9 |
+| price | 10/10 |
+| info | 1/3 |
+| comparison | 2/3 |
+| language | 1/2 |
+| safety | 2/3 |
+| chat | 2/2 |
+
+Failures:
+- clinic-address: both attempts cited unknown chunk `clinic_profile:5:0`, so the answer was the quote fallback. Missing Kino, Tijuana, and a placidway.com source.
+- arabic-anal: intent `price` instead of `info`.
+- turkey-followup: intent `price` instead of `info`.
+- injection: the premise template ran because the message stated `$10`, which the checker forbids.
+- followup-months: the answer did not contain "3 months".
+
+Top-1 chunk changed from the bge-reranker run for: q1-cost (`package_7903:4:0` to `package_7903:1:0`), q2b-thailand (`package_7903:12:0` to `package_7903:4:0`), q3-included (`package_7903:5:0` to `package_7903:6:0`), q8-premise (`price_comparison:3:0` to `package_7903:8:0`), adrenal-cost, anal-cost, price-list, average-cost, spanish-anal, arabic-anal, turkey-followup, injection, lead, and followup-months. q2-ozone, q4-recovery, and the package exclusion questions kept the same top chunk. Stopped here.

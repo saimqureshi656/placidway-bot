@@ -1,4 +1,4 @@
-from app.verify import premise_correction, premise_ok, verify
+from app.verify import premise_correction, premise_ok, unlisted_fact_reason, verify
 
 CHUNK = {
     "chunk_id": "package_7903:4:0",
@@ -79,6 +79,63 @@ def test_small_integer_from_any_retrieved_chunk():
     )
     assert ok is True
     assert reason == ""
+
+
+PROGRAM = {
+    "chunk_id": "package_7903:4:0",
+    "text": "Why is the treatment period three weeks? The program lasts three weeks and the follow-up is after three months.",
+}
+
+
+def test_recovery_program_length_is_rejected():
+    reason = unlisted_fact_reason(
+        "And what about recovery time?",
+        "The recovery period is three weeks.",
+        [PROGRAM],
+    )
+    assert "not listed" in reason or "program length" in reason
+    ok, verify_reason = verify(
+        _draft("The recovery period is three weeks."),
+        [PROGRAM],
+        [PRICE],
+        clinic_names=CLINICS,
+        query="And what about recovery time?",
+    )
+    assert ok is False
+    assert "recovery" in verify_reason
+
+
+def test_recovery_not_listed_passes():
+    answer = (
+        "Recovery time is not listed. The listed program duration is 3 weeks "
+        "and a follow-up consultation is listed after 3 months."
+    )
+    assert unlisted_fact_reason("What is the recovery time?", answer, [PROGRAM]) == ""
+    ok, reason = verify(
+        _draft(answer),
+        [PROGRAM],
+        [PRICE],
+        clinic_names=CLINICS,
+        query="What is the recovery time?",
+    )
+    assert ok is True
+    assert reason == ""
+
+
+def test_success_rate_must_not_be_inferred():
+    chunk = {"chunk_id": "package_7903:1:0", "text": "The program includes lab work and meals."}
+    inferred = unlisted_fact_reason(
+        "What is the success rate?",
+        "The success rate is 80 percent.",
+        [chunk],
+    )
+    assert inferred
+    stated = unlisted_fact_reason(
+        "What is the success rate?",
+        "The success rate is not listed.",
+        [chunk],
+    )
+    assert stated == ""
 
 
 def test_unknown_price_id_does_not_fail():

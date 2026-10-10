@@ -255,6 +255,7 @@ def _finish(
             "llm_calls": calls,
             "cache": cache,
             "retries": retries or [],
+            "top_chunks": timings.get("top_chunks") or [],
         },
     }
     return payload
@@ -268,7 +269,7 @@ def chat(body: ChatRequest, request: Request) -> dict:
     started = time.perf_counter()
     history = [turn.model_dump() for turn in body.history][-6:]
     key = db.cache_key(body.message, history)
-    cached = db.get_cached_answer(key)
+    cached = None if body.session_id.startswith("eval-") else db.get_cached_answer(key)
     if cached:
         cached_debug = dict(cached.get("debug") or {})
         cached_debug["cache"] = True
@@ -425,7 +426,7 @@ def chat(body: ChatRequest, request: Request) -> dict:
         raw_llm=raw_llm,
         retries=retries,
     )
-    if verifier_status in {"pass", "template", "premise"}:
+    if verifier_status in {"pass", "template", "premise"} and not body.session_id.startswith("eval-"):
         db.save_cached_answer(key, payload)
     return payload
 

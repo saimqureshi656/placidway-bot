@@ -29,6 +29,8 @@ Comparisons: only compare items that both appear in the passages. If one side is
 For each side that is listed, name the clinic and the city, and the exact price as written on the page.
 Mention that prices are estimates only when a cited passage is from the comparison page.
 Cite the chunk_id value, or the passage number in brackets.
+Program duration, stay length, and follow-up timing are not recovery time. If the pages do not state a recovery time, downtime, or how long until normal, say recovery time is not listed. Do not present the program length as recovery.
+Success rate, survival, and how long side effects last must never be inferred. If the pages do not state them, say they are not listed.
 Medical efficacy claims: attribute to the page ("According to the clinic's page..."). Never state as fact. Never advise.
 When comparing clinics, copy each clinic name exactly as written in the passage.
 Do not mention clinics, prices or treatments not in the passages.
@@ -182,7 +184,7 @@ def generate_checked(
         draft["answer"] = _estimate_disclaimer(draft["answer"], hits, _cited_ids(draft, hits))
         if draft.get("answer_status") == "not_listed":
             draft["answer"] = add_related_facts(draft.get("answer") or "", hits)
-        ok, reason = verify(draft, hits, prices, clinic_names=clinic_names)
+        ok, reason = verify(draft, hits, prices, clinic_names=clinic_names, query=query)
         verify_ms += int((time.perf_counter() - started) * 1000)
         attempts.append({"raw": draft.get("raw"), "verifier_reason": "" if ok else reason})
         if not ok:

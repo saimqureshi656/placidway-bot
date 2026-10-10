@@ -9,6 +9,24 @@ from app.templates import fallback, quote_url
 from ingest.urls import ALLOWLIST
 
 _URL = re.compile(r"https?://[^\s)>\"]+")
+_RECOVERY_QUESTION = re.compile(r"\b(recovery|downtime|how long until normal)\b", re.IGNORECASE)
+_DURATION = r"(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:weeks?|days?|months?)"
+_EXPLICIT_RECOVERY = re.compile(
+    rf"\b(recovery time|recovery period|downtime)\b.{{0,80}}{_DURATION}|{_DURATION}.{{0,40}}\b(recovery time|recovery period|downtime)\b",
+    re.IGNORECASE,
+)
+_SUCCESS_QUESTION = re.compile(r"\bsuccess rate\b", re.IGNORECASE)
+_SURVIVAL_QUESTION = re.compile(r"\bsurvival\b", re.IGNORECASE)
+_SIDE_EFFECT_QUESTION = re.compile(
+    r"\bside effects?\b.{0,40}\b(?:duration|last|how long)\b|\bhow long\b.{0,40}\bside effects?\b",
+    re.IGNORECASE,
+)
+_SUCCESS_STATED = re.compile(r"\bsuccess rate\b.{0,40}\d", re.IGNORECASE)
+_SURVIVAL_STATED = re.compile(r"\bsurvival\b.{0,40}(?:\d|%|percent)", re.IGNORECASE)
+_SIDE_EFFECT_STATED = re.compile(
+    rf"\bside effects?\b.{{0,60}}{_DURATION}|{_DURATION}.{{0,40}}\bside effects?\b",
+    re.IGNORECASE,
+)
 _CLINIC_PHRASE = re.compile(
     r"\b([A-Z][\w'&.®-]*(?:\s+[A-Z][\w'&.®-]*){0,6}\s+(?:Clinic|Center|Centre|Hospital))\b"
 )
@@ -46,12 +64,54 @@ def source_numbers(chunks: list[dict], prices: list[dict]) -> set[int]:
     return found
 
 
+def _chunk_text(chunks: list[dict]) -> str:
+    return "\n".join(chunk.get("text") or "" for chunk in chunks)
+
+
+def _window_has_duration(answer: str, label: str) -> bool:
+    for match in re.finditer(rf"\b{label}\b([\s\S]{{0,80}})", answer, re.IGNORECASE):
+        window = match.group(1)
+        if "not listed" in window.lower():
+            continue
+        if re.search(_DURATION, window, re.IGNORECASE):
+            return True
+    return False
+
+
+def unlisted_fact_reason(query: str, answer: str, chunks: list[dict]) -> str:
+    """Reject inferred recovery, success, survival, or side-effect facts."""
+    text = _chunk_text(chunks)
+    lowered = answer.lower()
+    if _RECOVERY_QUESTION.search(query) and not _EXPLICIT_RECOVERY.search(text):
+        if "not listed" not in lowered:
+            return "say that recovery time is not listed; program length is not recovery time"
+        if _window_has_duration(answer, "recovery"):
+            return "do not present the program length as the recovery time"
+    if _SUCCESS_QUESTION.search(query) and not _SUCCESS_STATED.search(text):
+        if "not listed" not in lowered:
+            return "success rate is not listed; do not infer it"
+        if _SUCCESS_STATED.search(answer):
+            return "do not infer a success rate"
+    if _SURVIVAL_QUESTION.search(query) and not _SURVIVAL_STATED.search(text):
+        if "not listed" not in lowered:
+            return "survival is not listed; do not infer it"
+        if _SURVIVAL_STATED.search(answer):
+            return "do not infer a survival figure"
+    if _SIDE_EFFECT_QUESTION.search(query) and not _SIDE_EFFECT_STATED.search(text):
+        if "not listed" not in lowered:
+            return "side effect duration is not listed; do not infer it"
+        if _window_has_duration(answer, "side effects") or _window_has_duration(answer, "side effect"):
+            return "do not infer how long side effects last"
+    return ""
+
+
 def verify(
     draft: dict,
     chunks: list[dict],
     prices: list[dict],
     *,
     clinic_names: list[str] | None = None,
+    query: str = "",
 ) -> tuple[bool, str]:
     status = str(draft.get("answer_status") or "")
     if status not in {"full", "partial", "not_listed"}:
@@ -94,6 +154,9 @@ def verify(
     for match in _CLINIC_PHRASE.findall(draft.get("answer") or ""):
         if not any(match.lower() in name or name in match.lower() for name in known):
             return False, f"clinic not in the knowledge base: {match}"
+    fact_reason = unlisted_fact_reason(query, answer, chunks)
+    if fact_reason:
+        return False, fact_reason
     return True, ""
 
 

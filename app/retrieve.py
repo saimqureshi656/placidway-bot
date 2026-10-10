@@ -116,6 +116,10 @@ class Retriever:
         rerank_ms = int((time.perf_counter() - rerank_started) * 1000)
         hits = reranked[: self.top_k]
         best = hits[0].score if hits else 0.0
+        top_chunks = [
+            {"chunk_id": hit.chunk_id, "score": round(hit.score, 4), "section": hit.section}
+            for hit in hits[:3]
+        ]
         prices = []
         if intent in {"price", "comparison"}:
             prices = self.lookup_prices(query, entities)
@@ -124,7 +128,7 @@ class Retriever:
             prices=prices,
             best_score=best,
             below_threshold=best < self.threshold,
-            timings={"retrieve_ms": retrieve_ms, "rerank_ms": rerank_ms},
+            timings={"retrieve_ms": retrieve_ms, "rerank_ms": rerank_ms, "top_chunks": top_chunks},
         )
 
     def _bm25_top(self, query: str) -> list[int]:

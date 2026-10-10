@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -16,6 +17,7 @@ from app.normalize import extract_numbers
 
 ROOT = Path(__file__).resolve().parents[1]
 GOLDEN = Path(__file__).parent / "golden.yaml"
+BGE_TOP1 = json.loads((Path(__file__).parent / "bge_top1.json").read_text(encoding="utf-8"))
 RESULTS = ROOT / "test_results.md"
 API = os.environ.get("EVAL_URL", "http://127.0.0.1:8000")
 REQUIRED = [
@@ -162,6 +164,7 @@ def main() -> None:
                     "calls": _format_calls(payload),
                     "timings": (payload.get("debug") or {}).get("timings") or {},
                     "retries": (payload.get("debug") or {}).get("retries") or [],
+                    "top_chunks": (payload.get("debug") or {}).get("top_chunks") or [],
                 }
             )
             debug = payload.get("debug") or {}
@@ -222,6 +225,24 @@ def main() -> None:
         lines.append(
             f"| {row['id']} | {'pass' if row['passed'] else 'fail'} | {row['intent']} | {row['latency_ms']:.0f} |"
         )
+    lines.extend(["", "## Top chunks", ""])
+    changed = []
+    for row in rows:
+        tops = row.get("top_chunks") or []
+        if not tops:
+            lines.append(f"- {row['id']}: none")
+            continue
+        shown = ", ".join(f"{item.get('chunk_id')} ({item.get('score')})" for item in tops)
+        lines.append(f"- {row['id']}: {shown}")
+        previous = BGE_TOP1.get(row["question"])
+        current = tops[0].get("chunk_id")
+        if previous and previous != current:
+            changed.append(f"{row['id']}: {previous} -> {current}")
+    lines.extend(["", "## Top-1 changed vs bge-reranker", ""])
+    if changed:
+        lines.extend(f"- {item}" for item in changed)
+    else:
+        lines.append("- none")
     lines.append("")
     RESULTS.write_text("\n".join(lines), encoding="utf-8")
     print(f"wrote {RESULTS}")
