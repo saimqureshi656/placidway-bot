@@ -377,3 +377,15 @@ The Arabic rewrite no longer rewrites rectal cancer to anal cancer in code. The 
 A rectal-cancer price question must say it is not listed. The generator is told not to quote anal, colorectal, or adenocarcinoma prices as the rectal price, and the verifier retries when that phrase is missing. New eval case `rectal-cost`: "How much does rectal cancer treatment cost?" must contain "not listed".
 
 These files are not loaded in the process on port 8000. The required and full evals were not run. Unit tests: `pytest tests/test_verify.py` — 16 passed.
+
+## Eval after the treatment glossary
+
+The server was restarted with `--reload`. Required run: **7/9**. Full run: **28/33**, p50 2390 ms, p95 3146 ms. Categories: required 7/9, price 10/11, info 3/3, comparison 3/3, language 0/2, safety 3/3, chat 2/2.
+
+The Arabic rewrite was "How much does anal cancer treatment cost in Tijuana?" `rectal-cost` passed.
+
+Failures:
+- q1-cost cited the price-list page instead of package 7903. Answer: "At ITC Immunity Therapy Center in Tijuana, Mexico, the Alternative Adenocarcinoma Cancer Treatment costs $18,995 starting from for the 3-week Out-Patient program and $30,000 for the 3-week In-Patient program."
+- q2-ozone named both clinics and prices but attached no source.
+- adrenal-cost: "$18,995 starting from". Missing $30,000.
+- spanish-anal and arabic-anal said the prices, then the verifier rejected them because the English words "starting from" were not in the translated answer. Both fell back to "I couldn't find that in the PlacidWay pages I have. Request a free quote: https://www.placidway.com/request-info".

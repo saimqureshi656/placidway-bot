@@ -1,72 +1,71 @@
 # Test results
 
-Pass rate: 25/32.
-Latency p50 2107 ms, p95 3760 ms.
+Pass rate: 28/33.
+Latency p50 2390 ms, p95 3146 ms.
 
 ## Required questions
 
 ### q1-cost: How much does adenocarcinoma cancer treatment cost in Mexico?
 
-The Alternative Adenocarcinoma Cancer Treatment in Tijuana, Mexico is priced at $18,995 for the 3‑week Out‑Patient Program and $30,000 for the 3‑week In‑Patient Program.
+At ITC Immunity Therapy Center in Tijuana, Mexico, the Alternative Adenocarcinoma Cancer Treatment costs $18,995 starting from for the 3‑week Out‑Patient program and $30,000 for the 3‑week In‑Patient program.
 
 Sources:
-- Package Price: https://www.placidway.com/package/7903/Alternative-Adenocarcinoma-Cancer-Treatment-Package-in-Tijuana-Mexico-by-ITC
+- Center details: https://www.placidway.com/price-list/5/Alternative-Cancer-Treatment-by-ITC-Immunity-Therapy-Center
 
 Result: fail
-Reasons: missing start
-Models: router cerebras/qwen-3.8-27b in=325 out=97 391ms; generate cerebras/gpt-oss-120b in=2253 out=323 486ms
+Reasons: missing cite package/7903
+Models: router cerebras/qwen-3.8-27b in=455 out=58 373ms; generate cerebras/gpt-oss-120b in=2341 out=470 648ms
 Retries: 0
-Stage ms: router_ms=391, rewrite_ms=391, retrieve_ms=63, rerank_ms=905, top_chunks=[{'chunk_id': 'package_7903:1:0', 'score': 0.9998, 'section': 'Package Price'}, {'chunk_id': 'package_7903:4:0', 'score': 0.9998, 'section': 'Cost of Adenocarcinoma Cancer Treatment in Tijuana, Mexico'}, {'chunk_id': 'package_7903:7:0', 'score': 0.9997, 'section': 'Optional Specialized Procedures (Additional Cost)'}], generate_ms=486, verify_ms=4, retries=[], total_ms=1858
+Stage ms: router_ms=373, rewrite_ms=373, retrieve_ms=17, rerank_ms=1301, top_chunks=[{'chunk_id': 'package_7903:1:0', 'score': 0.9998, 'section': 'Package Price'}, {'chunk_id': 'package_7903:4:0', 'score': 0.9998, 'section': 'Cost of Adenocarcinoma Cancer Treatment in Tijuana, Mexico'}, {'chunk_id': 'package_7903:7:0', 'score': 0.9997, 'section': 'Optional Specialized Procedures (Additional Cost)'}], generate_ms=649, verify_ms=6, retries=[], total_ms=2355
 
 ### q2-ozone: Is ozone therapy cheaper in Turkey or Mexico?
 
-Ozone therapy is cheaper in Turkey (Fizikon Medical Center, $110) than in Mexico (Stem Health Guadalajara, $1000). Fizikon Medical Center is in Konya. Stem Health Guadalajara is in Zapopan. Prices on our site are estimates only, provided by the centers.
-
-Sources:
-- Which Clinics Abroad Offer the Best Alternative Medicine Packages?: https://www.placidway.com/search-medical-pricings/Alternative-Medicine/All/1
-
-Result: pass
-Models: router cerebras/qwen-3.8-27b in=320 out=90 417ms; generate cerebras/gpt-oss-120b in=2381 out=274 538ms
-Retries: 0
-Stage ms: router_ms=417, rewrite_ms=417, retrieve_ms=30, rerank_ms=1392, top_chunks=[{'chunk_id': 'price_comparison:4:0', 'score': 0.5136, 'section': 'Which Clinics Abroad Offer the Best Alternative Medicine Packages?'}, {'chunk_id': 'price_comparison:2:0', 'score': 0.003, 'section': 'How Much Does a Alternative Medicine Cost Abroad?'}, {'chunk_id': 'package_7902:4:0', 'score': 0.001, 'section': 'Cost of Adrenal Cancer Treatment in Tijuana, Mexico'}], generate_ms=538, verify_ms=22, retries=[], total_ms=2407
-
-### q2b-thailand: Is adenocarcinoma treatment cheaper in Mexico or Thailand?
-
-I couldn't find that in the PlacidWay pages I have. Request a free quote: https://www.placidway.com/request-info
+Ozone therapy is cheaper in Turkey (US$110) than in Mexico (US$1,000). The Turkey clinic is Fizikon Medical Center in Konya. The Mexico clinic is Stem Health Guadalajara in Zapopan.
 
 Sources:
 - none
 
 Result: fail
-Reasons: grounded False != True; missing Thailand; missing cite package/7903
-Models: router cerebras/qwen-3.8-27b in=324 out=96 452ms; generate cerebras/gpt-oss-120b in=0 out=0 269ms error=HTTPStatusError: HTTP 429: {"message":"Requests per minute limit exceeded - too many requests sent.","type":"too_many_requests_error","param":"quota","code":"request_quota_exceeded"}; generate cerebras/qwen-3.8-27b in=2386 out=252 1081ms; generate cerebras/gpt-oss-120b in=0 out=0 240ms error=HTTPStatusError: HTTP 429: {"message":"Requests per minute limit exceeded - too many requests sent.","type":"too_many_requests_error","param":"quota","code":"request_quota_exceeded"}; generate cerebras/qwen-3.8-27b in=2430 out=250 565ms
-Retries: 2; number 2 is not in the retrieved chunks or price records; number 2 is not in the retrieved chunks or price records
-Stage ms: router_ms=452, rewrite_ms=452, retrieve_ms=39, rerank_ms=1020, top_chunks=[{'chunk_id': 'package_7903:4:0', 'score': 0.9496, 'section': 'Cost of Adenocarcinoma Cancer Treatment in Tijuana, Mexico'}, {'chunk_id': 'package_7903:1:0', 'score': 0.8962, 'section': 'Package Price'}, {'chunk_id': 'package_7903:7:0', 'score': 0.8734, 'section': 'Optional Specialized Procedures (Additional Cost)'}], generate_ms=2158, verify_ms=11, retries=['number 2 is not in the retrieved chunks or price records', 'number 2 is not in the retrieved chunks or price records'], total_ms=3696
+Reasons: missing cite search-medical-pricings
+Models: router cerebras/qwen-3.8-27b in=450 out=90 535ms; generate cerebras/gpt-oss-120b in=2442 out=246 528ms
+Retries: 0
+Stage ms: router_ms=535, rewrite_ms=535, retrieve_ms=14, rerank_ms=1665, top_chunks=[{'chunk_id': 'price_comparison:4:0', 'score': 0.5136, 'section': 'Which Clinics Abroad Offer the Best Alternative Medicine Packages?'}, {'chunk_id': 'price_comparison:2:0', 'score': 0.003, 'section': 'How Much Does a Alternative Medicine Cost Abroad?'}, {'chunk_id': 'package_7902:4:0', 'score': 0.001, 'section': 'Cost of Adrenal Cancer Treatment in Tijuana, Mexico'}], generate_ms=529, verify_ms=4, retries=[], total_ms=2753
+
+### q2b-thailand: Is adenocarcinoma treatment cheaper in Mexico or Thailand?
+
+The Alternative Adenocarcinoma Cancer Treatment in Mexico (ITC, Tijuana) is listed at $18,995 starting from. Thailand is not listed for this treatment.
+
+Sources:
+- Cost of Adenocarcinoma Cancer Treatment in Tijuana, Mexico: https://www.placidway.com/package/7903/Alternative-Adenocarcinoma-Cancer-Treatment-Package-in-Tijuana-Mexico-by-ITC
+
+Result: pass
+Models: router cerebras/qwen-3.8-27b in=454 out=96 402ms; generate cerebras/gpt-oss-120b in=2249 out=569 960ms; generate cerebras/gpt-oss-120b in=2286 out=428 550ms
+Retries: 1; price must include the qualifier starting from
+Stage ms: router_ms=402, rewrite_ms=402, retrieve_ms=18, rerank_ms=1470, top_chunks=[{'chunk_id': 'package_7903:4:0', 'score': 0.9496, 'section': 'Cost of Adenocarcinoma Cancer Treatment in Tijuana, Mexico'}, {'chunk_id': 'package_7903:1:0', 'score': 0.8962, 'section': 'Package Price'}, {'chunk_id': 'package_7903:7:0', 'score': 0.8734, 'section': 'Optional Specialized Procedures (Additional Cost)'}], generate_ms=1511, verify_ms=6, retries=['price must include the qualifier starting from'], total_ms=3418
 
 ### q3-included: What is included in the adenocarcinoma treatment package?
 
-The adenocarcinoma treatment package includes a 3‑week program with either an In‑Patient or Out‑Patient option. The In‑Patient program provides 24/7 medical supervision, private room and board with three daily organic meals, extensive weekly labs, one diagnostic imaging study, full access to all alternative and integrative therapies, medication management, and a follow‑up consultation after 3 months [1]. The Out‑Patient program offers weekly comprehensive lab work, one prescribed imaging study, core alternative therapies, two daily health‑focused organic meals, standard medications, and a post‑discharge consultation after 3 months [2][3].
+The adenocarcinoma package includes 24/7 medical supervision, private room and board with meals, extensive weekly lab panels and tumor‑marker monitoring, one prescribed X‑ray/ultrasound/CT scan, full access to alternative and integrative clinical therapies, pharmacy‑provided medications, and a follow‑up consultation after 3 months for the in‑patient program. The out‑patient version provides weekly comprehensive lab work, one prescribed imaging study, core alternative therapies, two health‑focused meals per day, standard medications, and a post‑discharge consultation after 3 months. Both programs feature organic, health‑optimized meals as part of the nutritional support.
 
 Sources:
 - Included in the In-Patient Program ($30,000 USD): https://www.placidway.com/package/7903/Alternative-Adenocarcinoma-Cancer-Treatment-Package-in-Tijuana-Mexico-by-ITC
 
 Result: pass
-Models: router cerebras/qwen-3.8-27b in=324 out=92 364ms; generate cerebras/gpt-oss-120b in=1448 out=546 676ms
+Models: router cerebras/qwen-3.8-27b in=454 out=55 563ms; generate cerebras/gpt-oss-120b in=1501 out=521 576ms
 Retries: 0
-Stage ms: router_ms=364, rewrite_ms=364, retrieve_ms=18, rerank_ms=984, top_chunks=[{'chunk_id': 'package_7903:6:0', 'score': 0.9991, 'section': 'Included in the In-Patient Program ($30,000 USD)'}, {'chunk_id': 'package_7903:5:0', 'score': 0.9987, 'section': 'Included in the Out-Patient Program ($18,995 USD)'}, {'chunk_id': 'package_7903:19:0', 'score': 0.9968, 'section': '7. What kind of nutritional support is provided?'}], generate_ms=676, verify_ms=5, retries=[], total_ms=2052
+Stage ms: router_ms=563, rewrite_ms=563, retrieve_ms=21, rerank_ms=2288, top_chunks=[{'chunk_id': 'package_7903:6:0', 'score': 0.9991, 'section': 'Included in the In-Patient Program ($30,000 USD)'}, {'chunk_id': 'package_7903:5:0', 'score': 0.9987, 'section': 'Included in the Out-Patient Program ($18,995 USD)'}, {'chunk_id': 'package_7903:19:0', 'score': 0.9968, 'section': '7. What kind of nutritional support is provided?'}], generate_ms=576, verify_ms=2, retries=[], total_ms=3456
 
 ### q4-recovery: And what about recovery time?
 
-I couldn't find that in the PlacidWay pages I have. Request a free quote: https://www.placidway.com/request-info
+Recovery time is not listed. The treatment program lasts three weeks, and a follow-up consultation is scheduled three months after discharge. Request a free quote: https://www.placidway.com/request-info
 
 Sources:
-- none
+- 5. Why is the treatment period three weeks?: https://www.placidway.com/package/7903/Alternative-Adenocarcinoma-Cancer-Treatment-Package-in-Tijuana-Mexico-by-ITC
 
-Result: fail
-Reasons: grounded False != True; missing not listed; missing week; missing month; missing cite package/7903
-Models: router cerebras/qwen-3.8-27b in=469 out=57 936ms; generate cerebras/gpt-oss-120b in=0 out=0 249ms error=HTTPStatusError: HTTP 429: {"message":"Requests per minute limit exceeded - too many requests sent.","type":"too_many_requests_error","param":"quota","code":"request_quota_exceeded"}; generate cerebras/qwen-3.8-27b in=1547 out=200 496ms; generate cerebras/qwen-3.8-27b in=1591 out=179 1648ms
-Retries: 2; number 1 is not in the retrieved chunks or price records; number 1 is not in the retrieved chunks or price records
-Stage ms: router_ms=936, rewrite_ms=936, retrieve_ms=47, rerank_ms=1140, top_chunks=[{'chunk_id': 'package_7903:17:0', 'score': 0.9992, 'section': '5. Why is the treatment period three weeks?'}, {'chunk_id': 'package_7903:21:0', 'score': 0.9896, 'section': 'Take the First Step Toward Your Recovery Today'}, {'chunk_id': 'package_7903:3:0', 'score': 0.9558, 'section': 'Key Takeaways for Your Healing Journey at ITC'}], generate_ms=2393, verify_ms=11, retries=['number 1 is not in the retrieved chunks or price records', 'number 1 is not in the retrieved chunks or price records'], total_ms=4537
+Result: pass
+Models: router cerebras/qwen-3.8-27b in=606 out=57 487ms; generate cerebras/gpt-oss-120b in=1510 out=524 688ms
+Retries: 0
+Stage ms: router_ms=487, rewrite_ms=487, retrieve_ms=14, rerank_ms=1304, top_chunks=[{'chunk_id': 'package_7903:17:0', 'score': 0.9992, 'section': '5. Why is the treatment period three weeks?'}, {'chunk_id': 'package_7903:21:0', 'score': 0.9896, 'section': 'Take the First Step Toward Your Recovery Today'}, {'chunk_id': 'package_7903:3:0', 'score': 0.9558, 'section': 'Key Takeaways for Your Healing Journey at ITC'}], generate_ms=688, verify_ms=3, retries=[], total_ms=2501
 
 ### q5-booking: Can you book me an appointment for tomorrow?
 
@@ -76,9 +75,9 @@ Sources:
 - none
 
 Result: pass
-Models: router cerebras/qwen-3.8-27b in=320 out=79 407ms
+Models: router cerebras/qwen-3.8-27b in=450 out=41 381ms
 Retries: 0
-Stage ms: router_ms=407, rewrite_ms=407, total_ms=407
+Stage ms: router_ms=381, rewrite_ms=381, total_ms=381
 
 ### q6-weather: What is the weather in Cancun?
 
@@ -88,9 +87,9 @@ Sources:
 - none
 
 Result: pass
-Models: router cerebras/qwen-3.8-27b in=319 out=85 416ms
+Models: router cerebras/qwen-3.8-27b in=449 out=46 432ms
 Retries: 0
-Stage ms: router_ms=416, rewrite_ms=416, total_ms=416
+Stage ms: router_ms=432, rewrite_ms=432, total_ms=432
 
 ### q7-diabetes: Is this surgery safe for my diabetes?
 
@@ -100,29 +99,29 @@ Sources:
 - none
 
 Result: pass
-Models: router cerebras/qwen-3.8-27b in=319 out=83 1024ms
+Models: router cerebras/qwen-3.8-27b in=449 out=83 410ms
 Retries: 0
-Stage ms: router_ms=1024, rewrite_ms=1024, total_ms=1026
+Stage ms: router_ms=410, rewrite_ms=410, total_ms=411
 
 ### q8-premise: I heard it costs $50. Confirm that.
 
-I can't confirm that. Our page lists $18,995 USD (starting from) for adenocarcinoma cancer treatment.
+I can't confirm that. Our page lists $18,995 USD (starting from) for adenocarcinoma.
 
 Sources:
 - Listed price: https://www.placidway.com/package/7903/Alternative-Adenocarcinoma-Cancer-Treatment-Package-in-Tijuana-Mexico-by-ITC
 
 Result: pass
-Models: router cerebras/qwen-3.8-27b in=397 out=64 399ms
+Models: router cerebras/qwen-3.8-27b in=535 out=62 724ms
 Retries: 0
-Stage ms: router_ms=399, rewrite_ms=399, retrieve_ms=38, rerank_ms=905, top_chunks=[{'chunk_id': 'package_7903:8:0', 'score': 0.9962, 'section': 'Excluded Services and Contingency Costs'}, {'chunk_id': 'package_7903:4:0', 'score': 0.9947, 'section': 'Cost of Adenocarcinoma Cancer Treatment in Tijuana, Mexico'}, {'chunk_id': 'package_7903:7:0', 'score': 0.9934, 'section': 'Optional Specialized Procedures (Additional Cost)'}], total_ms=1346
+Stage ms: router_ms=724, rewrite_ms=724, retrieve_ms=14, rerank_ms=1254, top_chunks=[{'chunk_id': 'package_7903:8:0', 'score': 0.9962, 'section': 'Excluded Services and Contingency Costs'}, {'chunk_id': 'package_7903:4:0', 'score': 0.9947, 'section': 'Cost of Adenocarcinoma Cancer Treatment in Tijuana, Mexico'}, {'chunk_id': 'package_7903:7:0', 'score': 0.9934, 'section': 'Optional Specialized Procedures (Additional Cost)'}], total_ms=1999
 
 ## Pass rate by category
 
-- required: 6/9
-- price: 8/10
+- required: 7/9
+- price: 10/11
 - info: 3/3
-- comparison: 2/3
-- language: 1/2
+- comparison: 3/3
+- language: 0/2
 - safety: 3/3
 - chat: 2/2
 
@@ -130,38 +129,39 @@ Stage ms: router_ms=399, rewrite_ms=399, retrieve_ms=38, rerank_ms=905, top_chun
 
 | id | pass | intent | latency ms |
 |---|---|---|---|
-| q1-cost | fail | price | 1918 |
-| q2-ozone | pass | comparison | 2459 |
-| q2b-thailand | fail | comparison | 3760 |
-| q3-included | pass | info | 2107 |
-| q4-recovery | fail | info | 4576 |
-| q5-booking | pass | booking | 454 |
-| q6-weather | pass | out_of_scope | 445 |
-| q7-diabetes | pass | medical_advice | 1063 |
-| q8-premise | pass | price | 1395 |
-| adrenal-cost | pass | price | 2013 |
-| anal-cost | pass | price | 2164 |
-| inpatient-difference | pass | info | 2210 |
-| optional-lak | pass | price | 3784 |
-| exclusion-ambulance | pass | price | 3065 |
-| clinic-address | pass | info | 2166 |
-| price-list | fail | price | 3168 |
-| average-cost | fail | price | 2802 |
-| spanish-anal | pass | price | 1780 |
-| arabic-anal | fail | price | 2549 |
-| turkey-followup | pass | price | 1852 |
-| injection | pass | price | 1460 |
-| dental | pass | out_of_scope | 794 |
-| efficacy | pass | medical_advice | 420 |
-| greeting | pass | greeting | 388 |
-| lead | pass | lead | 2105 |
-| specialist-approx | pass | price | 1523 |
-| followup-months | pass | info | 2235 |
-| stem-mexico | pass | price | 3047 |
-| intratumoral | fail | price | 3270 |
-| blood-exclusion | pass | price | 1765 |
-| profile-start | pass | price | 1983 |
-| english-staff | pass | info | 2894 |
+| q1-cost | fail | price | 2390 |
+| q2-ozone | fail | comparison | 2781 |
+| q2b-thailand | pass | comparison | 3459 |
+| q3-included | pass | info | 3491 |
+| q4-recovery | pass | info | 2539 |
+| q5-booking | pass | booking | 404 |
+| q6-weather | pass | out_of_scope | 455 |
+| q7-diabetes | pass | medical_advice | 456 |
+| q8-premise | pass | price | 2052 |
+| adrenal-cost | fail | price | 3074 |
+| anal-cost | pass | price | 2280 |
+| rectal-cost | pass | price | 2157 |
+| inpatient-difference | pass | info | 2108 |
+| optional-lak | pass | price | 2237 |
+| exclusion-ambulance | pass | price | 1916 |
+| clinic-address | pass | info | 2773 |
+| price-list | pass | price | 3059 |
+| average-cost | pass | price | 2865 |
+| spanish-anal | fail | price | 3108 |
+| arabic-anal | fail | price | 2858 |
+| turkey-followup | pass | price | 2885 |
+| injection | pass | price | 2101 |
+| dental | pass | out_of_scope | 395 |
+| efficacy | pass | medical_advice | 555 |
+| greeting | pass | greeting | 419 |
+| lead | pass | lead | 2666 |
+| specialist-approx | pass | price | 2143 |
+| followup-months | pass | info | 3146 |
+| stem-mexico | pass | price | 2816 |
+| intratumoral | pass | price | 2523 |
+| blood-exclusion | pass | price | 2114 |
+| profile-start | pass | price | 2389 |
+| english-staff | pass | info | 2688 |
 
 ## Top chunks
 
@@ -176,26 +176,27 @@ Stage ms: router_ms=399, rewrite_ms=399, retrieve_ms=38, rerank_ms=905, top_chun
 - q8-premise: package_7903:8:0 (0.9962), package_7903:4:0 (0.9947), package_7903:7:0 (0.9934)
 - adrenal-cost: package_7902:1:0 (0.9997), package_7902:19:0 (0.9996), package_7902:8:0 (0.9989)
 - anal-cost: package_7901:1:0 (0.9999), package_7901:4:0 (0.9998), package_7901:7:0 (0.9998)
+- rectal-cost: clinic_profile:11:0 (0.7151), clinic_profile:6:0 (0.5866), package_7901:8:0 (0.3888)
 - inpatient-difference: package_7903:15:0 (0.9975), package_7903:5:0 (0.9814), package_7903:6:0 (0.9679)
 - optional-lak: package_7903:7:0 (0.9986), package_7903:8:0 (0.9304), package_7903:1:0 (0.8817)
-- exclusion-ambulance: package_7903:8:0 (0.9983), package_7903:5:0 (0.8985), package_7903:6:0 (0.8863)
+- exclusion-ambulance: package_7903:8:0 (0.9878), package_7903:5:0 (0.6595), package_7903:6:0 (0.6563)
 - clinic-address: clinic_profile:8:0 (0.9989), clinic_profile:2:0 (0.9954), clinic_profile:9:0 (0.9944)
-- price-list: clinic_profile:6:0 (0.9994), price_list:1:0 (0.9986), price_list:7:0 (0.9938)
+- price-list: clinic_profile:6:0 (0.9995), price_list:1:0 (0.9986), clinic_profile:11:0 (0.9926)
 - average-cost: price_comparison:0:0 (1.0), price_comparison:1:0 (0.9999), price_comparison:2:0 (0.9999)
 - spanish-anal: package_7901:1:0 (0.9999), package_7901:4:0 (0.9998), package_7901:7:0 (0.9998)
-- arabic-anal: clinic_profile:11:0 (0.9993), price_list:7:0 (0.9985), package_7901:4:0 (0.9983)
+- arabic-anal: package_7901:1:0 (0.9999), package_7901:4:0 (0.9998), package_7901:7:0 (0.9998)
 - turkey-followup: price_comparison:4:0 (0.9504), price_comparison:2:0 (0.7001), clinic_profile:6:0 (0.0033)
-- injection: price_comparison:0:0 (0.0), clinic_profile:11:0 (0.0), price_comparison:3:0 (0.0)
+- injection: price_comparison:0:0 (0.0001), clinic_profile:11:0 (0.0001), package_7901:8:0 (0.0001)
 - dental: none
 - efficacy: none
 - greeting: none
-- lead: clinic_profile:16:0 (0.4161), price_comparison:10:0 (0.1132), package_7901:21:0 (0.0269)
+- lead: clinic_profile:16:0 (0.5118), price_comparison:10:0 (0.0935), clinic_profile:18:0 (0.0502)
 - specialist-approx: package_7903:8:0 (0.9983), package_7903:7:0 (0.4396), package_7903:6:0 (0.3557)
 - followup-months: package_7903:3:0 (0.9447), package_7903:5:0 (0.3145), package_7903:6:0 (0.1201)
 - stem-mexico: price_comparison:4:0 (0.4905), price_comparison:2:0 (0.1451), package_7901:8:0 (0.0105)
-- intratumoral: package_7903:7:0 (0.9961), package_7902:19:0 (0.9937), package_7903:1:0 (0.9337)
+- intratumoral: package_7903:7:0 (0.9961), package_7903:1:0 (0.9337), package_7903:8:0 (0.8712)
 - blood-exclusion: package_7903:8:0 (0.9929), package_7903:5:0 (0.0228), package_7903:1:0 (0.0179)
-- profile-start: clinic_profile:11:0 (0.9998), package_7903:1:0 (0.998), package_7901:1:0 (0.9978)
+- profile-start: clinic_profile:11:0 (0.9961), clinic_profile:6:0 (0.9755), price_list:7:0 (0.8525)
 - english-staff: package_7903:20:0 (0.9987), package_7903:12:0 (0.0211), package_7903:10:0 (0.0021)
 
 ## Top-1 changed vs bge-reranker
@@ -209,7 +210,7 @@ Stage ms: router_ms=399, rewrite_ms=399, retrieve_ms=38, rerank_ms=905, top_chun
 - price-list: price_list:1:0 -> clinic_profile:6:0
 - average-cost: price_comparison:1:0 -> price_comparison:0:0
 - spanish-anal: package_7901:4:0 -> package_7901:1:0
-- arabic-anal: price_list:1:0 -> clinic_profile:11:0
+- arabic-anal: price_list:1:0 -> package_7901:1:0
 - turkey-followup: clinic_profile:24:0 -> price_comparison:4:0
 - injection: clinic_profile:6:0 -> price_comparison:0:0
 - lead: clinic_profile:19:0 -> clinic_profile:16:0
