@@ -105,6 +105,34 @@ def unlisted_fact_reason(query: str, answer: str, chunks: list[dict]) -> str:
     return ""
 
 
+_CITATION = re.compile(r"\[(?:\s*P?\d+\s*(?:,\s*P?\d+\s*)*)\]", re.IGNORECASE)
+_QUALIFIERS = ("starting from", "approximately", "range")
+
+
+def strip_citations(answer: str) -> str:
+    return re.sub(r"[ \t]{2,}", " ", _CITATION.sub("", answer)).strip()
+
+
+def _answer_has_amount(answer: str, amount: int) -> bool:
+    return amount in extract_numbers(answer)
+
+
+def missing_qualifier(answer: str, prices: list[dict]) -> str:
+    lowered = answer.lower()
+    for record in prices:
+        amounts = []
+        if record.get("price_low") is not None:
+            amounts.append(int(record["price_low"]))
+        if record.get("price_high") is not None:
+            amounts.append(int(record["price_high"]))
+        if not any(_answer_has_amount(answer, amount) for amount in amounts):
+            continue
+        qualifier = str(record.get("qualifier") or "").strip().lower()
+        if qualifier in _QUALIFIERS and qualifier not in lowered:
+            return f"price must include the qualifier {qualifier}"
+    return ""
+
+
 def verify(
     draft: dict,
     chunks: list[dict],
@@ -116,18 +144,25 @@ def verify(
     status = str(draft.get("answer_status") or "")
     if status not in {"full", "partial", "not_listed"}:
         return False, "answer_status must be full, partial, or not_listed"
-    answer = draft.get("answer") or ""
+    answer = strip_citations(draft.get("answer") or "")
+    draft["answer"] = answer
     if "couldn't find that" in answer.lower():
         return False, "answer refused even though passages were retrieved"
     ordered_ids = [chunk["chunk_id"] for chunk in chunks]
     chunk_ids = set(ordered_ids)
 
-    def resolve(chunk_id: str) -> str | None:
+    def resolve(chunk_id: str) -> tuple[str, str] | None:
         token = str(chunk_id).strip().strip("[]")
+        price_match = re.fullmatch(r"P(\d+)", token, re.IGNORECASE)
+        if price_match:
+            index = int(price_match.group(1)) - 1
+            if 0 <= index < len(prices):
+                return ("price", str(index))
+            return None
         if token.isdigit():
             index = int(token) - 1
             if 0 <= index < len(ordered_ids):
-                return ordered_ids[index]
+                return ("chunk", ordered_ids[index])
         return None
 
     cited: set[str] = set()
@@ -136,9 +171,11 @@ def verify(
         for chunk_id in claim.get("chunk_ids") or []:
             mapped = resolve(chunk_id)
             if mapped is None:
-                return False, f"invalid passage number {chunk_id}"
-            resolved.append(mapped)
-            cited.add(mapped)
+                return False, f"invalid citation {chunk_id}"
+            kind, value = mapped
+            if kind == "chunk":
+                resolved.append(value)
+                cited.add(value)
         claim["chunk_ids"] = resolved
     if status == "not_listed" and not cited:
         return False, "not_listed answer must cite chunk ids"
@@ -160,6 +197,9 @@ def verify(
     fact_reason = unlisted_fact_reason(query, answer, chunks)
     if fact_reason:
         return False, fact_reason
+    qualifier_reason = missing_qualifier(answer, prices)
+    if qualifier_reason:
+        return False, qualifier_reason
     return True, ""
 
 

@@ -317,6 +317,7 @@ def chat(body: ChatRequest, request: Request) -> dict:
     language = rewritten_obj["language"]
     rewritten = rewritten_obj["standalone_query_en"]
     entities: dict = rewritten_obj["entities"]
+    logger.info("rewrite standalone_query_en=%s entities=%s", rewritten, entities)
     hits: list[dict] = []
     verifier_status = "template"
     grounded = True

@@ -36,7 +36,7 @@ When comparing clinics, copy each clinic name exactly as written in the passage.
 Do not mention clinics, prices or treatments not in the passages.
 Reply in {language}. Keep prices, clinic names and URLs exactly as written.
 2 to 6 sentences or a short list. No filler.
-Cite only the passage numbers [1] through [N]. Do not write chunk ids.
+Cite passages as [1] through [N] and price records as [P1] through [Pn]. Do not write chunk ids.
 Output JSON: {"answer":"", "claims":[{"text":"", "chunk_ids":["1"]}], "answer_status":"full"}
 """
 
@@ -45,22 +45,24 @@ def _context(hits: list[dict], prices: list[dict]) -> str:
     passages = []
     for index, hit in enumerate(hits, start=1):
         passages.append(f"[{index}] section={hit.get('section', '')}\n{hit['text']}")
-    records = json.dumps(
-        [
-            {
-                "raw_text": record.get("raw_text"),
-                "price_low": record.get("price_low"),
-                "price_high": record.get("price_high"),
-                "currency": record.get("currency"),
-                "qualifier": record.get("qualifier"),
-                "program": record.get("program"),
-                "treatment": record.get("treatment"),
-            }
-            for record in prices
-        ],
-        ensure_ascii=False,
-    )
-    return "Passages:\n" + "\n\n".join(passages) + "\n\nPrice records:\n" + records
+    record_lines = []
+    for index, record in enumerate(prices, start=1):
+        record_lines.append(
+            f"[P{index}] "
+            + json.dumps(
+                {
+                    "raw_text": record.get("raw_text"),
+                    "price_low": record.get("price_low"),
+                    "price_high": record.get("price_high"),
+                    "currency": record.get("currency"),
+                    "qualifier": record.get("qualifier"),
+                    "program": record.get("program"),
+                    "treatment": record.get("treatment"),
+                },
+                ensure_ascii=False,
+            )
+        )
+    return "Passages:\n" + "\n\n".join(passages) + "\n\nPrice records:\n" + "\n".join(record_lines)
 
 
 def _status(parsed: dict) -> str:
@@ -130,8 +132,16 @@ def _estimate_disclaimer(answer: str, hits: list[dict], cited: list[str]) -> str
     return text.strip()
 
 
+_CITATION = re.compile(r"\[(?:\s*P?\d+\s*(?:,\s*P?\d+\s*)*)\]", re.IGNORECASE)
+
+
+def strip_citations(answer: str) -> str:
+    return _CITATION.sub("", answer)
+
+
 def polish_answer(answer: str) -> str:
-    text = re.sub(r"\bStandard\b\s*", "", answer)
+    text = strip_citations(answer)
+    text = re.sub(r"\bStandard\b\s*", "", text)
     url = quote_url()
     if url in text:
         text = re.sub(

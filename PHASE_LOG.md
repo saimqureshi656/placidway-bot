@@ -355,3 +355,15 @@ Failures, full text:
 - q2b-thailand, q4-recovery, price-list, average-cost, arabic-anal, intratumoral: the verifier rejected a passage number that was also read as a price digit (`1` or `2`) or the token `price_record`, twice, so the reply was "I couldn't find that in the PlacidWay pages I have. Request a free quote: https://www.placidway.com/request-info".
 
 Top-1 versus the bge-reranker run. Correct page and section: q1 Package Price on 7903; q2b the 7903 cost section; q3 the in-patient inclusions section; adrenal, anal, and Spanish anal Package Price sections; average-cost the comparison intro (same page as Quick Facts); turkey-followup the comparison clinic table; lead stays on the clinic profile. Wrong: price-list top-1 is the clinic profile cost section instead of the price-list table; arabic-anal top-1 is the clinic profile cost section instead of package 7901; q8-premise top-1 is the 7903 exclusions section instead of the cost table; followup-months top-1 is Key Takeaways instead of the inclusions section that states the 3-month follow-up. Injection has no correct section. Stopped here.
+
+## Citation markers, price-record numbers, and qualifiers
+
+Files changed: `app/verify.py`, `app/generate.py`, `app/main.py`, `app/router.py`, `app/retrieve.py`, `tests/test_verify.py`.
+
+Citation markers such as `[1]`, `[2, 3]`, and `[P1]` are removed from the answer before number checks and are not shown in the reply. Price records in the prompt are labeled `[P1]` through `[Pn]`, and those labels map back to the records. An invalid passage or price citation is retried.
+
+If an answer quotes a price whose record qualifier is starting from, approximately, or range, the answer must include that qualifier or the verifier retries. Queries that say price list, all prices, or list of prices boost the price-list page.
+
+The stored Arabic anal rewrites were "How much does rectal cancer treatment cost in Tijuana?" with intent price. They did not contain "anal cancer". The rewrite prompt now requires those words, and a الشرج message is corrected to "anal cancer" if the model still says rectal. Each rewrite logs `standalone_query_en` and entities.
+
+The process already bound to port 8000 was not restarted, so these changes are not loaded yet. The required and full evals were not run against this code. Unit tests: `pytest tests/test_verify.py` — 15 passed.

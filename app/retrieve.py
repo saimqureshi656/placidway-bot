@@ -161,7 +161,10 @@ class Retriever:
         page_type = ""
         if "video" in query_l:
             page_type = "clinic_videos"
-        elif "price list" in query_l or "pricelist" in query_l:
+        elif any(
+            phrase in query_l
+            for phrase in ("price list", "pricelist", "all prices", "list of prices")
+        ):
             page_type = "price_list"
         elif any(word in query_l for word in ("cheaper", "compare", "versus", " vs ")):
             page_type = "price_comparison"

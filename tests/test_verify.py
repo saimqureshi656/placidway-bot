@@ -40,7 +40,7 @@ def test_fabricated_price_is_rejected():
 
 def test_listed_price_passes():
     ok, reason = verify(
-        _draft("The out-patient program is $18,995 for 3 weeks at ITC Immunity Therapy Center."),
+        _draft("The out-patient program is $18,995 starting from for 3 weeks at ITC Immunity Therapy Center."),
         [CHUNK],
         [PRICE],
         clinic_names=CLINICS,
@@ -72,7 +72,7 @@ def test_small_integer_from_any_retrieved_chunk():
     cited = {"chunk_id": "package_7903:4:0", "text": "Out-Patient Program | $18,995"}
     other = {"chunk_id": "package_7903:9:0", "text": "The program length is three weeks."}
     ok, reason = verify(
-        _draft("The out-patient program is $18,995 for 3 weeks."),
+        _draft("The out-patient program is $18,995 starting from for 3 weeks."),
         [cited, other],
         [PRICE],
         clinic_names=CLINICS,
@@ -138,16 +138,47 @@ def test_success_rate_must_not_be_inferred():
     assert stated == ""
 
 
+def test_citation_marker_does_not_fail_number_check():
+    ok, reason = verify(
+        _draft("The out-patient program is $18,995 starting from [2]."),
+        [CHUNK],
+        [PRICE],
+        clinic_names=CLINICS,
+    )
+    assert ok is True
+    assert reason == ""
+
+
+def test_displayed_answer_drops_citation_marker():
+    draft = _draft("The out-patient program is $18,995 starting from [2].")
+    ok, reason = verify(draft, [CHUNK], [PRICE], clinic_names=CLINICS)
+    assert ok is True
+    assert reason == ""
+    assert "[2]" not in draft["answer"]
+    assert "18,995" in draft["answer"]
+
+
+def test_missing_qualifier_is_rejected():
+    ok, reason = verify(
+        _draft("The out-patient program is $18,995 for 3 weeks."),
+        [CHUNK],
+        [PRICE],
+        clinic_names=CLINICS,
+    )
+    assert ok is False
+    assert "starting from" in reason
+
+
 def test_invalid_passage_number_is_rejected():
     draft = _draft("The out-patient program is $18,995 for 3 weeks.")
     draft["claims"] = [{"text": "price", "chunk_ids": ["9"]}]
     ok, reason = verify(draft, [CHUNK], [PRICE], clinic_names=CLINICS)
     assert ok is False
-    assert "invalid passage number" in reason
+    assert "invalid citation" in reason
 
 
 def test_unknown_price_id_does_not_fail():
-    draft = _draft("The out-patient program is $18,995 for 3 weeks.")
+    draft = _draft("The out-patient program is $18,995 starting from for 3 weeks.")
     draft["used_price_ids"] = ["not-a-real-id"]
     ok, reason = verify(draft, [CHUNK], [PRICE], clinic_names=CLINICS)
     assert ok is True
