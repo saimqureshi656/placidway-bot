@@ -85,7 +85,13 @@ def _cited_ids(draft: dict) -> set[str]:
     return cited
 
 
-def _sources(hits: list[dict], cited: set[str], premise_url: str = "") -> list[dict]:
+def _sources(
+    hits: list[dict],
+    cited: set[str],
+    premise_url: str = "",
+    prices: list[dict] | None = None,
+    price_indexes: list[int] | None = None,
+) -> list[dict]:
     seen: set[str] = set()
     sources = []
     for hit in hits:
@@ -99,6 +105,23 @@ def _sources(hits: list[dict], cited: set[str], premise_url: str = "") -> list[d
                 "title": hit.get("section") or "",
                 "section": hit.get("section") or "",
                 "snippet": snippet,
+            }
+        )
+    for index in price_indexes or []:
+        if index < 0 or index >= len(prices or []):
+            continue
+        record = (prices or [])[index]
+        url = str(record.get("url") or "")
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        label = str(record.get("program") or record.get("treatment") or "Price")
+        sources.append(
+            {
+                "url": url,
+                "title": label,
+                "section": label,
+                "snippet": str(record.get("raw_text") or ""),
             }
         )
     if premise_url and premise_url not in seen:
@@ -325,6 +348,8 @@ def chat(body: ChatRequest, request: Request) -> dict:
     raw_llm = None
     verifier_reason = ""
     cited: set[str] = set()
+    cited_price_indexes: list[int] = []
+    used_prices: list[dict] = []
     premise_url = ""
     retries: list[str] = []
     if routed.intent == "greeting":
@@ -342,6 +367,7 @@ def chat(body: ChatRequest, request: Request) -> dict:
             result = get_retriever().search(rewritten, intent=routed.intent, entities=entities)
             timings.update(result.timings)
             hits = [hit.__dict__ for hit in result.hits]
+            used_prices = list(result.prices)
             topic = _treatment(rewritten, entities, body.history)
             clinic_name = _clinic(rewritten, entities, body.history)
             correction = None
@@ -382,6 +408,7 @@ def chat(body: ChatRequest, request: Request) -> dict:
                 answer_status = str(draft.get("answer_status") or "")
                 grounded = answer_status in {"full", "partial", "not_listed"}
                 cited = _cited_ids(draft)
+                cited_price_indexes = [int(index) for index in draft.get("cited_price_indexes") or []]
             if routed.intent == "medical_advice":
                 advice = medical_advice()
                 rest = answer
@@ -413,7 +440,7 @@ def chat(body: ChatRequest, request: Request) -> dict:
     payload = _finish(
         body=body,
         answer=answer,
-        sources=_sources(hits, cited, premise_url),
+        sources=_sources(hits, cited, premise_url, used_prices, cited_price_indexes),
         intent=routed.intent,
         answer_status=answer_status,
         grounded=grounded,

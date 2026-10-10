@@ -1,5 +1,7 @@
 """Retrieval checks for five known queries."""
 
+import re
+
 import pytest
 
 from app.retrieve import get_retriever
@@ -15,6 +17,36 @@ def test_adenocarcinoma_cost_ranks_package_7903(retriever):
     assert result.hits
     assert result.hits[0].chunk_id.startswith("package_7903")
     assert "adenocarcinoma" in result.hits[0].treatment.lower()
+
+
+def test_named_treatment_uses_package_prices_not_the_price_list(retriever):
+    result = retriever.search(
+        "How much does adenocarcinoma cancer treatment cost in Mexico?",
+        intent="price",
+        entities={"treatment": "adenocarcinoma"},
+    )
+    assert result.prices
+    assert any(record["category"] == "package_program" for record in result.prices)
+    assert all(record["category"] != "price_list_row" for record in result.prices)
+    assert all("package/7903" in record["url"] for record in result.prices)
+    assert all(hit.page_type != "price_list" for hit in result.hits)
+
+    anal = retriever.search(
+        "How much does anal cancer treatment cost in Tijuana?",
+        intent="price",
+        entities={"treatment": "anal cancer"},
+    )
+    assert all(re.search(r"\banal\b", (record.get("treatment") or "").lower()) for record in anal.prices)
+    assert all("package/7901" in record["url"] for record in anal.prices)
+
+
+def test_price_list_question_keeps_price_list_rows(retriever):
+    result = retriever.search(
+        "What does the ITC price list say breast cancer treatment costs?",
+        intent="price",
+        entities={"treatment": "breast cancer"},
+    )
+    assert any(record.get("id") == "p_list_breast_cancer" for record in result.prices)
 
 
 def test_adrenal_cost_ranks_package_7902(retriever):

@@ -174,6 +174,102 @@ def test_displayed_answer_drops_citation_marker():
     assert "18,995" in draft["answer"]
 
 
+def test_spanish_qualifiers_count_as_starting_from():
+    for phrase in ("desde", "a partir de", "comienza en"):
+        ok, reason = verify(
+            _draft(f"El programa ambulatorio cuesta $18,995 {phrase} por 3 semanas."),
+            [CHUNK],
+            [PRICE],
+            clinic_names=CLINICS,
+        )
+        assert ok is True, phrase
+        assert reason == ""
+
+
+def test_arabic_qualifiers_count_as_starting_from():
+    for phrase in ("يبدأ من", "تبدأ من", "ابتداءً من"):
+        ok, reason = verify(
+            _draft(f"البرنامج الخارجي {phrase} $18,995 لمدة 3 أسابيع."),
+            [CHUNK],
+            [PRICE],
+            clinic_names=CLINICS,
+        )
+        assert ok is True, phrase
+        assert reason == ""
+
+
+def test_spanish_and_arabic_approximate_qualifiers():
+    price = {
+        **PRICE,
+        "price_low": 200,
+        "price_high": 200,
+        "qualifier": "approximately",
+        "raw_text": "Specialist consultations approximately $200",
+    }
+    chunk = {"chunk_id": "package_7903:8:0", "text": "Specialist consultations approximately $200"}
+    for phrase in ("aproximadamente", "حوالي", "تقريبا"):
+        ok, reason = verify(
+            _draft(f"Specialist consultations {phrase} $200."),
+            [chunk],
+            [price],
+            clinic_names=CLINICS,
+        )
+        assert ok is True, phrase
+        assert reason == ""
+
+
+def test_cost_question_must_include_every_program_price():
+    programs = [
+        {
+            **PRICE,
+            "qualifier": "",
+            "category": "package_program",
+            "program": "Out-Patient Program",
+            "duration": "3 Weeks",
+        },
+        {
+            **PRICE,
+            "id": "p_7903_inpatient",
+            "price_low": 30000,
+            "price_high": 30000,
+            "qualifier": "",
+            "category": "package_program",
+            "program": "In-Patient Program",
+            "duration": "3 Weeks",
+            "raw_text": "In-Patient Program | 3 Weeks | $30,000",
+        },
+    ]
+    missing, reason = verify(
+        _draft("The out-patient program is $18,995 for 3 weeks."),
+        [CHUNK],
+        programs,
+        clinic_names=CLINICS,
+        query="How much does adenocarcinoma treatment cost?",
+    )
+    assert missing is False
+    assert "In-Patient" in reason
+    ok, reason = verify(
+        _draft(
+            "Out-Patient is $18,995 for 3 weeks and In-Patient is $30,000 for 3 weeks."
+        ),
+        [CHUNK],
+        programs,
+        clinic_names=CLINICS,
+        query="How much does adenocarcinoma treatment cost?",
+    )
+    assert ok is True
+    assert reason == ""
+
+
+def test_cited_price_record_is_recorded():
+    draft = _draft("The out-patient program is $18,995 starting from.")
+    draft["claims"] = [{"text": "price", "chunk_ids": ["P1", "1"]}]
+    ok, reason = verify(draft, [CHUNK], [PRICE], clinic_names=CLINICS)
+    assert ok is True
+    assert reason == ""
+    assert draft["cited_price_indexes"] == [0]
+
+
 def test_missing_qualifier_is_rejected():
     ok, reason = verify(
         _draft("The out-patient program is $18,995 for 3 weeks."),

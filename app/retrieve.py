@@ -37,6 +37,8 @@ TREATMENT_TERMS = (
     "stem cell",
     "live cell",
 )
+PACKAGE_TERMS = ("adenocarcinoma", "adrenal", "anal")
+_PRICE_LIST_QUERY = ("price list", "pricelist", "all prices", "list of prices")
 COUNTRY_TERMS = ("turkey", "mexico", "thailand", "croatia", "georgia", "india")
 
 
@@ -115,6 +117,11 @@ class Retriever:
         reranked = self._rerank(query, (unflagged + flagged)[:RERANK_POOL])
         rerank_ms = int((time.perf_counter() - rerank_started) * 1000)
         hits = reranked[: self.top_k]
+        query_text = _query_text(query, entities)
+        if _package_terms(query_text) and not _wants_price_list(query_text):
+            package_hits = [hit for hit in hits if hit.page_type != "price_list"]
+            if package_hits:
+                hits = package_hits
         best = hits[0].score if hits else 0.0
         top_chunks = [
             {"chunk_id": hit.chunk_id, "score": round(hit.score, 4), "section": hit.section}
@@ -262,24 +269,34 @@ class Retriever:
 
     def lookup_prices(self, query: str, entities: dict | None = None) -> list[dict]:
         entities = entities or {}
-        query_l = f"{query} {entities.get('treatment', '')} {entities.get('country', '')}".lower()
-        treatments = [term for term in TREATMENT_TERMS if term in query_l]
-        entity_treatment = str(entities.get("treatment") or "").lower()
-        if entity_treatment:
+        query_l = _query_text(query, entities)
+        treatments = _named_terms(query_l)
+        entity_treatment = str(entities.get("treatment") or "").lower().strip()
+        if entity_treatment and entity_treatment not in treatments:
             treatments.append(entity_treatment)
+        package_terms = _package_terms(query_l)
+        wants_list = _wants_price_list(query_l)
         matched = []
         for record in self.price_records:
             if not record.get("answerable", True):
+                continue
+            category = record.get("category")
+            treatment = str(record.get("treatment") or "").lower()
+            if package_terms and not wants_list:
+                if category == "price_list_row":
+                    continue
+                if any(_term_in(treatment, term) for term in package_terms):
+                    matched.append(record)
                 continue
             blob = " ".join(
                 str(record.get(key) or "")
                 for key in ("treatment", "program", "clinic", "location", "category", "raw_text")
             ).lower()
             if treatments:
-                if any(term in blob for term in treatments):
+                if any(_term_in(blob, term) for term in treatments):
                     matched.append(record)
                 continue
-            if record["category"] == "comparison_summary" and any(
+            if category == "comparison_summary" and any(
                 word in query_l for word in ("average", "range", "how much", "cost")
             ):
                 matched.append(record)
@@ -287,6 +304,27 @@ class Retriever:
 
 
 _RETRIEVER: Retriever | None = None
+
+
+def _term_in(text: str, term: str) -> bool:
+    return re.search(rf"\b{re.escape(term)}\b", text) is not None
+
+
+def _query_text(query: str, entities: dict | None) -> str:
+    entities = entities or {}
+    return f"{query} {entities.get('treatment', '')} {entities.get('country', '')}".lower()
+
+
+def _named_terms(text: str) -> list[str]:
+    return [term for term in TREATMENT_TERMS if _term_in(text, term)]
+
+
+def _package_terms(text: str) -> list[str]:
+    return [term for term in PACKAGE_TERMS if _term_in(text, term)]
+
+
+def _wants_price_list(text: str) -> bool:
+    return any(phrase in text for phrase in _PRICE_LIST_QUERY)
 
 
 def get_retriever() -> Retriever:

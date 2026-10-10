@@ -389,3 +389,13 @@ Failures:
 - q2-ozone named both clinics and prices but attached no source.
 - adrenal-cost: "$18,995 starting from". Missing $30,000.
 - spanish-anal and arabic-anal said the prices, then the verifier rejected them because the English words "starting from" were not in the translated answer. Both fell back to "I couldn't find that in the PlacidWay pages I have. Request a free quote: https://www.placidway.com/request-info".
+
+## Package sources, program prices, and translated qualifiers
+
+Files changed: `app/main.py`, `app/retrieve.py`, `app/generate.py`, `app/verify.py`, `tests/test_verify.py`, `tests/test_retrieve.py`.
+
+Sources are the cited passages plus the URL of every cited price record. A question that names adenocarcinoma, adrenal, or anal cancer receives that package's price records, and price-list rows and chunks are left out, so the package page is the source. A price-list question still uses the price-list rows.
+
+A treatment cost question must list every Out-Patient and In-Patient price with its duration. The verifier retries when one is missing. Qualifiers are accepted in English, Spanish, and Arabic.
+
+Required run: **9/9**. Full run: **33/33**, p50 2718 ms, p95 4012 ms. Categories: required 9/9, price 11/11, info 3/3, comparison 3/3, language 2/2, safety 3/3, chat 2/2. Unit tests: `pytest tests/test_verify.py tests/test_retrieve.py` — 29 passed.

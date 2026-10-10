@@ -109,6 +109,33 @@ def unlisted_fact_reason(query: str, answer: str, chunks: list[dict]) -> str:
 
 _CITATION = re.compile(r"\[(?:\s*P?\d+\s*(?:,\s*P?\d+\s*)*)\]", re.IGNORECASE)
 _QUALIFIERS = ("starting from", "approximately", "range")
+_DIACRITICS = re.compile(r"[\u064B-\u0652\u0670\u0640]")
+_COST_QUESTION = re.compile(r"\b(how much|cost|price|priced)\b", re.IGNORECASE)
+_COMPONENT_PRICE = re.compile(
+    r"\b(lak|ambulance|intratumoral|specialist|blood|exclusion|excluded|optional|pint|price list|profile|average|ozone|stem health|difference)\b",
+    re.IGNORECASE,
+)
+_QUALIFIER_ALIASES = {
+    "starting from": (
+        "starting from",
+        "from",
+        "desde",
+        "a partir de",
+        "comienza",
+        "يبدأ من",
+        "تبدأ من",
+        "ابتداء من",
+    ),
+    "approximately": (
+        "approximately",
+        "about",
+        "aproximadamente",
+        "حوالي",
+        "تقريبا",
+    ),
+    "range": ("range",),
+}
+_WEEK_WORDS = ("week", "semana", "اسبوع", "اسابيع")
 
 
 def strip_citations(answer: str) -> str:
@@ -119,8 +146,22 @@ def _answer_has_amount(answer: str, amount: int) -> bool:
     return amount in extract_numbers(answer)
 
 
+def _fold_qualifier(text: str) -> str:
+    folded = _DIACRITICS.sub("", text.lower())
+    folded = folded.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ة", "ه")
+    return re.sub(r"\s+", " ", folded)
+
+
+def _has_qualifier(answer: str, qualifier: str) -> bool:
+    folded = _fold_qualifier(answer)
+    for phrase in _QUALIFIER_ALIASES.get(qualifier, (qualifier,)):
+        token = _fold_qualifier(phrase)
+        if re.search(rf"(?<!\w){re.escape(token)}(?!\w)", folded):
+            return True
+    return False
+
+
 def missing_qualifier(answer: str, prices: list[dict]) -> str:
-    lowered = answer.lower()
     for record in prices:
         amounts = []
         if record.get("price_low") is not None:
@@ -130,8 +171,33 @@ def missing_qualifier(answer: str, prices: list[dict]) -> str:
         if not any(_answer_has_amount(answer, amount) for amount in amounts):
             continue
         qualifier = str(record.get("qualifier") or "").strip().lower()
-        if qualifier in _QUALIFIERS and qualifier not in lowered:
+        if qualifier in _QUALIFIERS and not _has_qualifier(answer, qualifier):
             return f"price must include the qualifier {qualifier}"
+    return ""
+
+
+def missing_program_prices(query: str, answer: str, prices: list[dict]) -> str:
+    """A treatment cost question has to name every package program price."""
+    if not _COST_QUESTION.search(query) or _COMPONENT_PRICE.search(query):
+        return ""
+    programs = [record for record in prices if record.get("category") == "package_program"]
+    if not programs:
+        return ""
+    missing = []
+    for record in programs:
+        amount = int(record["price_low"])
+        if not _answer_has_amount(answer, amount):
+            missing.append(str(record.get("program") or amount))
+    if missing:
+        return "include every program price: " + ", ".join(missing)
+    folded = _fold_qualifier(answer)
+    for record in programs:
+        duration = str(record.get("duration") or "").lower()
+        if "week" in duration and not any(word in folded for word in _WEEK_WORDS):
+            return f"include the program duration {record.get('duration')}"
+        for number in extract_numbers(duration):
+            if number not in extract_numbers(answer):
+                return f"include the program duration {record.get('duration')}"
     return ""
 
 
@@ -168,6 +234,7 @@ def verify(
         return None
 
     cited: set[str] = set()
+    cited_prices: list[int] = []
     for claim in draft.get("claims") or []:
         resolved: list[str] = []
         for chunk_id in claim.get("chunk_ids") or []:
@@ -178,7 +245,10 @@ def verify(
             if kind == "chunk":
                 resolved.append(value)
                 cited.add(value)
+            else:
+                cited_prices.append(int(value))
         claim["chunk_ids"] = resolved
+    draft["cited_price_indexes"] = cited_prices
     if status == "not_listed" and not cited:
         return False, "not_listed answer must cite chunk ids"
     allowed_numbers = source_numbers(chunks, prices)
@@ -202,6 +272,9 @@ def verify(
     qualifier_reason = missing_qualifier(answer, prices)
     if qualifier_reason:
         return False, qualifier_reason
+    program_reason = missing_program_prices(query, answer, prices)
+    if program_reason:
+        return False, program_reason
     return True, ""
 
 
